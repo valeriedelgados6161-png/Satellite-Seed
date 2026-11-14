@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Satellite Seed · NASA POWER para el Arco Seco de Panamá</title>
+<meta name="description" content="Satellite Seed: datos diarios de NASA POWER (PRECTOTCORR, T2M) traducidos en decisiones de siembra y rotación de cultivos para la Península de Azuero, Panamá. NASA Space Apps Challenge 2026 · Field Shift.">
+<meta name="theme-color" content="#0A1D37">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230A1D37'/%3E%3Cellipse cx='50' cy='52' rx='36' ry='15' transform='rotate(-25 50 52)' fill='none' stroke='%2360B5FF' stroke-width='4'/%3E%3Cpath d='M30 72 Q50 58 70 72Z' fill='%23B5763D'/%3E%3Crect x='48' y='46' width='4' height='20' rx='2' fill='%234ADE80'/%3E%3Cpath d='M50 50 C38 50 36 40 38 36 C46 36 50 42 50 50Z' fill='%2322C55E'/%3E%3Cpath d='M50 50 C62 50 66 40 64 34 C54 34 50 42 50 50Z' fill='%2386EFAC'/%3E%3Ccircle cx='72' cy='31' r='5' fill='%23FACC15'/%3E%3C/svg%3E">
+
+<!-- Tipografías -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Leaflet (mapas) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+
+<style>
+/* =====================================================================
+   1. TOKENS DE DISEÑO (paleta extraída del logotipo)
+   ===================================================================== */
+:root{
+  --navy:#0A1D37;          /* Deep Orbital Navy */
+  --navy-2:#0D2342;
+  --slate:#112A4A;         /* Elevated Space Slate */
+  --slate-2:#163459;
+  --border:#1E3F66;
+  --sky:#60B5FF;           /* Orbit Sky Blue */
+  --sky-soft:rgba(96,181,255,.14);
+  --leaf:#4ADE80;          /* Sprout Leaf Green */
+  --leaf-2:#22C55E;
+  --leaf-soft:rgba(74,222,128,.14);
+  --sun:#FACC15;           /* Solar Amber Gold */
+  --sun-2:#FBBF24;
+  --sun-soft:rgba(250,204,21,.14);
+  --soil:#9A5B32;          /* Fertile Soil Terracotta */
+  --soil-2:#B5763D;
+  --soil-soft:rgba(154,91,50,.22);
+  --danger:#F87171;
+  --danger-soft:rgba(248,113,113,.15);
+  --text:#F8FAFC;
+  --text-2:#CBD5E1;
+  --muted:#8EA3BF;
+  --radius:18px;
+  --radius-sm:12px;
+  --shadow:0 10px 30px -12px rgba(0,0,0,.55);
+  --font-head:'Plus Jakarta Sans',system-ui,-apple-system,Segoe UI,sans-serif;
+  --font-body:'Inter',system-ui,-apple-system,Segoe UI,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:84px}
+body{
+  margin:0;background:var(--navy);color:var(--text-2);
+  font-family:var(--font-body);font-size:15.5px;line-height:1.6;
+  background-image:
+    radial-gradient(1200px 600px at 85% -10%, rgba(96,181,255,.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 20%, rgba(74,222,128,.06), transparent 60%);
+  background-attachment:fixed;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:var(--font-head);color:var(--text);margin:0;line-height:1.2;letter-spacing:-.01em}
+a{color:var(--sky)}
+button,select,input{font-family:inherit}
+.mono{font-family:var(--font-mono)}
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:2px solid var(--sky);outline-offset:2px;border-radius:6px}
+
+/* Modo Productor / Modo Evaluador NASA */
+body:not(.mode-sci) .sci-only{display:none !important}
+body.mode-sci .edu-only{display:none !important}
+
+/* =====================================================================
+   2. PANTALLA DE CARGA
+   ===================================================================== */
+#splash{position:fixed;inset:0;z-index:9999;background:var(--navy);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .6s ease, visibility .6s}
+#splash.hide{opacity:0;visibility:hidden}
+#splash .logo-anim{width:180px;height:180px}
+#splash p{font-family:var(--font-mono);color:var(--sky);font-size:13px;letter-spacing:.08em;margin:0}
+#splash h1{font-size:26px}
+@media (prefers-reduced-motion:reduce){ .orbit-sat{display:none} *{animation:none!important;transition:none!important} }
+
+/* =====================================================================
+   3. ENCABEZADO
+   ===================================================================== */
+header.top{position:sticky;top:0;z-index:1000;background:rgba(10,29,55,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.top .bar{display:flex;align-items:center;gap:16px;height:68px}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;min-width:0}
+.brand svg{width:44px;height:44px;flex:none}
+.brand .t1{font-family:var(--font-head);font-weight:800;color:var(--text);font-size:19px;letter-spacing:-.02em;white-space:nowrap}
+.brand .t2{font-size:11.5px;color:var(--muted);font-family:var(--font-mono);white-space:nowrap}
+.top nav{display:flex;gap:4px;margin-left:auto}
+.top nav a{color:var(--text-2);text-decoration:none;font-size:13.5px;font-weight:500;padding:8px 12px;border-radius:999px;transition:background .2s,color .2s}
+.top nav a:hover,.top nav a.active{background:var(--sky-soft);color:var(--text)}
+.mode-switch{display:flex;align-items:center;background:var(--slate);border:1px solid var(--border);border-radius:999px;padding:4px;gap:2px;flex:none}
+.mode-switch button{border:0;background:transparent;color:var(--text-2);font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .25s}
+.mode-switch button svg{width:15px;height:15px}
+.mode-switch button[aria-pressed="true"]{background:var(--leaf-2);color:#052e16}
+body.mode-sci .mode-switch button[aria-pressed="true"]{background:var(--sky);color:#062b4f}
+@media (max-width:1080px){ .top nav{display:none} .mode-switch{margin-left:auto} }
+@media (max-width:560px){ .brand .t2{display:none} .mode-switch button span{display:none} .brand .t1{font-size:17px} }
+
+/* =====================================================================
+   4. COMPONENTES BASE
+   ===================================================================== */
+section.block{padding:56px 0 8px}
+.eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--sky);display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.eyebrow svg{width:14px;height:14px}
+.sec-title{font-size:clamp(24px,3vw,32px);margin-bottom:8px}
+.sec-sub{color:var(--text-2);max-width:760px;margin:0 0 26px}
+.card{background:linear-gradient(180deg,rgba(22,52,89,.72),rgba(17,42,74,.78));border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.pad{padding:22px}
+.grid{display:grid;gap:18px}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--slate-2);color:var(--text);padding:10px 16px;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;transition:transform .15s, background .2s, border-color .2s;text-decoration:none}
+.btn:hover{transform:translateY(-1px);border-color:var(--sky)}
+.btn:active{transform:translateY(0)}
+.btn svg{width:17px;height:17px}
+.btn.primary{background:linear-gradient(180deg,var(--leaf),var(--leaf-2));color:#052e16;border-color:transparent}
+.btn.primary:hover{box-shadow:0 8px 24px -8px rgba(74,222,128,.6)}
+.btn.sky{background:var(--sky-soft);border-color:rgba(96,181,255,.45)}
+.btn.small{padding:7px 12px;font-size:13px;border-radius:10px}
+.btn[disabled]{opacity:.5;cursor:not-allowed;transform:none}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:rgba(17,42,74,.8);color:var(--text-2);padding:7px 13px;border-radius:999px;font-size:13.5px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
+.chip:hover{border-color:var(--leaf);color:var(--text)}
+.chip.active{background:var(--leaf-soft);border-color:var(--leaf);color:var(--text)}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+.badge svg{width:13px;height:13px}
+.b-live{background:var(--leaf-soft);color:var(--leaf);border-color:rgba(74,222,128,.4)}
+.b-cache{background:var(--sun-soft);color:var(--sun);border-color:rgba(250,204,21,.4)}
+.b-demo{background:var(--danger-soft);color:#FCA5A5;border-color:rgba(248,113,113,.45)}
+.b-load{background:var(--sky-soft);color:var(--sky);border-color:rgba(96,181,255,.4)}
+.b-low{background:var(--leaf-soft);color:var(--leaf)}
+.b-mid{background:var(--sun-soft);color:var(--sun)}
+.b-high{background:var(--danger-soft);color:#FCA5A5}
+.b-nd{background:rgba(142,163,191,.15);color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.dot.pulse{animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 currentColor}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+
+/* Bloque didáctico “¿Qué significa esto para tu finca?” */
+.meaning{margin-top:14px;border-left:3px solid var(--leaf);background:rgba(74,222,128,.07);border-radius:0 12px 12px 0;padding:10px 14px;font-size:14px;color:var(--text-2)}
+.meaning b.q{display:flex;align-items:center;gap:6px;color:var(--leaf);font-family:var(--font-head);font-size:13px;margin-bottom:3px}
+.meaning b.q svg{width:15px;height:15px}
+.formula{margin-top:12px;background:rgba(6,18,36,.75);border:1px dashed rgba(96,181,255,.45);border-radius:10px;padding:10px 12px;font-family:var(--font-mono);font-size:12.5px;color:#BFE0FF;overflow-x:auto}
+.formula .lbl{color:var(--sky);font-weight:600;display:block;margin-bottom:4px;letter-spacing:.06em;font-size:11px;text-transform:uppercase}
+
+/* =====================================================================
+   5. HERO + MAPA
+   ===================================================================== */
+.hero{padding:34px 0 0}
+.hero h1{font-size:clamp(28px,4.2vw,46px);font-weight:800;letter-spacing:-.03em;max-width:880px}
+.hero h1 .g{background:linear-gradient(90deg,var(--leaf),var(--sky));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p.lead{font-size:17px;max-width:760px;margin:12px 0 18px}
+.steps{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px}
+.step{display:flex;align-items:center;gap:10px;background:rgba(17,42,74,.7);border:1px solid var(--border);padding:8px 14px 8px 8px;border-radius:999px;font-size:13.5px}
+.step .n{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--leaf);color:#052e16;font-weight:800;font-family:var(--font-head);font-size:13px}
+.presets{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;scrollbar-width:thin}
+.map-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px}
+@media (max-width:960px){ .map-layout{grid-template-columns:1fr} }
+#map{height:520px;border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;background:#0b1a30;position:relative}
+@media (max-width:640px){ #map{height:380px} }
+.map-fallback{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted);font-size:14px}
+.coord-form{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.coord-form input{width:120px;background:var(--slate);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:9px 10px;font-family:var(--font-mono);font-size:13px}
+.coord-form label{font-size:12px;color:var(--muted);font-family:var(--font-mono)}
+.leaflet-container{font-family:var(--font-body)}
+.leaflet-control-layers{background:rgba(17,42,74,.95)!important;color:var(--text-2)!important;border:1px solid var(--border)!important;border-radius:12px!important}
+.leaflet-control-layers-expanded{padding:10px 12px!important}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--slate)!important;color:var(--text)!important;border:1px solid var(--border)}
+.leaflet-control-attribution{background:rgba(10,29,55,.75)!important;color:var(--muted)!important}
+.leaflet-control-attribution a{color:var(--sky)!important}
+.leaflet-bar a{background:var(--slate)!important;color:var(--text)!important;border-color:var(--border)!important}
+.farm-pin{position:relative;width:26px;height:26px}
+.farm-pin .core{position:absolute;inset:5px;border-radius:50%;background:var(--leaf);border:3px solid #F8FAFC;box-shadow:0 0 0 2px rgba(10,29,55,.6)}
+.farm-pin .ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--leaf);animation:ring 2s infinite}
+@keyframes ring{0%{transform:scale(.6);opacity:1}100%{transform:scale(2.2);opacity:0}}
+
+/* Panel lateral de diagnóstico */
+.side{display:flex;flex-direction:column;gap:14px}
+.loc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.loc-name{font-size:21px}
+.loc-coords{font-family:var(--font-mono);font-size:12.5px;color:var(--sky);margin-top:4px}
+.traffic{display:flex;align-items:center;gap:16px;margin-top:14px}
+.light{display:flex;flex-direction:column;gap:6px;background:#06142a;padding:8px;border-radius:14px;border:1px solid var(--border)}
+.light i{width:20px;height:20px;border-radius:50%;background:#1b2b44;display:block;transition:all .4s}
+.light i.on.g{background:var(--leaf);box-shadow:0 0 16px var(--leaf)}
+.light i.on.y{background:var(--sun);box-shadow:0 0 16px var(--sun)}
+.light i.on.r{background:var(--danger);box-shadow:0 0 16px var(--danger)}
+.traffic h3{font-size:17px}
+.traffic p{margin:4px 0 0;font-size:14px}
+.mini-kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.mini-kpis div{background:rgba(6,18,36,.55);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+.mini-kpis small{display:block;font-size:11.5px;color:var(--muted)}
+.mini-kpis strong{font-family:var(--font-head);color:var(--text);font-size:19px}
+.warn-box{display:flex;gap:10px;align-items:flex-start;background:var(--sun-soft);border:1px solid rgba(250,204,21,.35);color:#FDE68A;border-radius:12px;padding:10px 12px;font-size:13px}
+.warn-box svg{width:18px;height:18px;flex:none;margin-top:2px}
+.warn-box.red{background:var(--danger-soft);border-color:rgba(248,113,113,.45);color:#FECACA}
+.warn-box.blue{background:var(--sky-soft);border-color:rgba(96,181,255,.4);color:#D6ECFF}
+
+/* Estado de carga dentro de tarjetas */
+.loading-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:26px;text-align:center}
+.loading-card svg{width:96px;height:96px}
+.loading-card p{margin:0;font-size:13.5px}
+.loading-card .mono{color:var(--sky);font-size:12px}
+
+/* =====================================================================
+   6. MÓDULO B · CLIMA
+   ===================================================================== */
+.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:1060px){ .kpis{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:560px){ .kpis{grid-template-columns:1fr} }
+.kpi .top-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.kpi .ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center}
+.kpi .ico svg{width:21px;height:21px}
+.kpi .label{font-size:13px;color:var(--muted);margin-top:12px}
+.kpi .value{font-family:var(--font-head);font-weight:800;color:var(--text);font-size:30px;letter-spacing:-.02em;line-height:1.1}
+.kpi .value small{font-size:14px;font-weight:600;color:var(--text-2);margin-left:4px}
+.kpi .param{font-family:var(--font-mono);font-size:11px;color:var(--sky);background:var(--sky-soft);padding:3px 8px;border-radius:6px}
+.charts{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:18px}
+@media (max-width:900px){ .charts{grid-template-columns:1fr} }
+.chart-box{position:relative;height:320px}
+.chart-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.chart-title h3{font-size:16px}
+.chart-title span{font-size:12px;color:var(--muted)}
+.table-wrap{overflow-x:auto;margin-top:18px}
+table.data{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
+table.data th{text-align:left;font-family:var(--font-head);color:var(--text);font-size:12.5px;padding:10px 12px;border-bottom:1px solid var(--border);background:rgba(6,18,36,.4)}
+table.data td{padding:10px 12px;border-bottom:1px solid rgba(30,63,102,.6)}
+table.data td.num{font-family:var(--font-mono);text-align:right}
+table.data th.num{text-align:right}
+table.data tr.hl td{background:rgba(250,204,21,.07)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.onset-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.onset-row .o{background:rgba(6,18,36,.55);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12.5px}
+.onset-row .o b{font-family:var(--font-mono);color:var(--leaf);font-weight:600}
+
+/* =====================================================================
+   7. MÓDULO C · CULTIVOS
+   ===================================================================== */
+.months{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 18px}
+.months .chip{min-width:58px;justify-content:center}
+.crops{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:1000px){ .crops{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:620px){ .crops{grid-template-columns:1fr} }
+.crop{position:relative;overflow:hidden;transition:transform .2s,border-color .2s}
+.crop:hover{transform:translateY(-2px);border-color:rgba(96,181,255,.6)}
+.crop::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:var(--rc,var(--muted))}
+.crop .head{display:flex;align-items:center;gap:12px}
+.crop .emoji{font-size:30px;width:52px;height:52px;display:grid;place-items:center;background:rgba(6,18,36,.55);border-radius:14px;border:1px solid var(--border)}
+.crop h3{font-size:17px}
+.crop .sci-name{font-style:italic;font-size:12.5px;color:var(--muted)}
+.crop .facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.crop .facts div{background:rgba(6,18,36,.5);border-radius:10px;padding:8px;text-align:center}
+.crop .facts small{display:block;font-size:10.5px;color:var(--muted);line-height:1.3}
+.crop .facts b{font-family:var(--font-mono);color:var(--text);font-size:13px}
+.meter{height:9px;background:#0a1a31;border-radius:99px;overflow:hidden;margin:12px 0 4px;border:1px solid var(--border)}
+.meter span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--soil),var(--sky));transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.meter-legend{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.crop .verdict{margin-top:10px;font-size:14px}
+.years-dots{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.years-dots span{font-family:var(--font-mono);font-size:10.5px;padding:2px 6px;border-radius:6px}
+.calendar{overflow-x:auto;margin-top:22px}
+.calendar table{border-collapse:separate;border-spacing:4px;width:100%;min-width:760px}
+.calendar th{font-size:12px;color:var(--muted);font-weight:600;font-family:var(--font-mono)}
+.calendar th.crop-h{text-align:left;color:var(--text);font-family:var(--font-head);font-size:13.5px;white-space:nowrap;padding-right:8px}
+.calendar td{height:36px;border-radius:8px;cursor:pointer;text-align:center;font-size:11px;font-weight:700;transition:transform .15s,outline-color .15s;outline:2px solid transparent}
+.calendar td:hover{transform:scale(1.08)}
+.calendar td.sel{outline-color:#F8FAFC}
+.calendar td.r-bajo{background:rgba(74,222,128,.75);color:#052e16}
+.calendar td.r-medio{background:rgba(250,204,21,.75);color:#422006}
+.calendar td.r-alto{background:rgba(248,113,113,.65);color:#450a0a}
+.calendar td.r-nd{background:#1b2b44;color:var(--muted)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;margin-top:10px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+.science-seal{display:flex;gap:14px;align-items:flex-start;margin-top:22px;padding:16px 18px;border-radius:var(--radius);border:1px solid rgba(250,204,21,.4);background:linear-gradient(135deg,rgba(250,204,21,.08),rgba(154,91,50,.12))}
+.science-seal svg{width:28px;height:28px;color:var(--sun);flex:none}
+.science-seal h4{font-size:15px;margin-bottom:4px}
+.science-seal p{margin:0;font-size:13.5px}
+
+/* =====================================================================
+   8. ROTACIÓN
+   ===================================================================== */
+.rotation{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;align-items:stretch}
+@media (max-width:900px){ .rotation{grid-template-columns:1fr} }
+.cycle{position:relative;padding:18px;border:1px solid var(--border);background:rgba(17,42,74,.75);border-radius:var(--radius);margin:0 14px}
+.cycle:first-child{margin-left:0}.cycle:last-child{margin-right:0}
+@media (max-width:900px){ .cycle{margin:0 0 26px 0!important} }
+.cycle:not(:last-child)::after{content:"➜";position:absolute;right:-26px;top:50%;transform:translateY(-50%);color:var(--leaf);font-size:22px;z-index:2}
+@media (max-width:900px){ .cycle:not(:last-child)::after{content:"⬇";right:auto;left:50%;top:auto;bottom:-27px;transform:translateX(-50%)} }
+.cycle .cn{font-family:var(--font-mono);font-size:11.5px;color:var(--sky);letter-spacing:.1em;text-transform:uppercase}
+.cycle select{width:100%;margin:8px 0 10px;background:var(--navy-2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:9px 10px;font-size:14.5px;font-weight:600}
+.cycle .when{font-size:13px;color:var(--muted)}
+.cycle .why{font-size:13.5px;margin-top:10px;border-top:1px dashed var(--border);padding-top:10px}
+.rot-summary{margin-top:20px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:760px){ .rot-summary{grid-template-columns:1fr} }
+.rot-summary div{background:rgba(6,18,36,.55);border:1px solid var(--border);border-radius:14px;padding:14px}
+.rot-summary b{display:block;color:var(--text);font-family:var(--font-head)}
+.rot-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
+.rot-controls select{background:var(--slate);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px}
+
+/* =====================================================================
+   9. COMUNIDAD (encuesta)
+   ===================================================================== */
+.survey{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:900px){ .survey{grid-template-columns:1fr} }
+.ring{width:132px;height:132px;position:relative;margin:0 auto 10px}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .val{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--font-head);font-weight:800;font-size:32px;color:var(--text)}
+.ring circle.fg{transition:stroke-dashoffset 1.4s cubic-bezier(.2,.8,.2,1)}
+.people{display:flex;justify-content:center;gap:3px;margin:6px 0 12px}
+.people svg{width:18px;height:18px}
+.survey h3{text-align:center;font-size:16px}
+.survey p.c{text-align:center;font-size:14px;margin:6px 0 0}
+.response{margin-top:14px;background:rgba(6,18,36,.55);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:13.5px}
+.response b{color:var(--leaf);display:flex;gap:6px;align-items:center;font-family:var(--font-head);font-size:13px}
+.response b svg{width:15px;height:15px}
+
+/* =====================================================================
+   10. METODOLOGÍA Y PIE
+   ===================================================================== */
+.method{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:860px){ .method{grid-template-columns:1fr} }
+dl.params{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:13.5px}
+dl.params dt{font-family:var(--font-mono);color:var(--sky)}
+dl.params dd{margin:0}
+.api-url{word-break:break-all;font-family:var(--font-mono);font-size:12px;background:rgba(6,18,36,.75);border:1px solid var(--border);padding:10px;border-radius:10px;color:#BFE0FF}
+footer{margin-top:64px;border-top:1px solid var(--border);background:rgba(6,16,32,.7);padding:36px 0 40px;font-size:13.5px}
+footer .cols{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:28px}
+@media (max-width:860px){ footer .cols{grid-template-columns:1fr} }
+footer h4{font-size:14px;margin-bottom:10px}
+footer p{margin:0 0 8px}
+footer .legal{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
+
+/* Toast */
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(30px);background:var(--slate);border:1px solid var(--border);color:var(--text);padding:12px 18px;border-radius:14px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:all .35s;z-index:5000;font-size:14px;max-width:92vw}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.fade-in{animation:fadeIn .5s ease both}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.file-drop{display:inline-flex}
+.file-drop input{display:none}
+</style>
+</head>
+
+<body class="mode-edu">
+
+<!-- =====================================================================
+     SVG reutilizables: logotipo y satélite orbitando la plántula
+     ===================================================================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="logo" viewBox="0 0 1024 1024">
+      <rect width="1024" height="1024" rx="220" fill="#0A1D37"/>
+      <circle cx="150" cy="170" r="7" fill="#CBD5E1" opacity=".75"/>
+      <circle cx="860" cy="220" r="5" fill="#CBD5E1" opacity=".6"/>
+      <circle cx="210" cy="780" r="5" fill="#CBD5E1" opacity=".6"/>
+      <circle cx="800" cy="820" r="7" fill="#CBD5E1" opacity=".55"/>
+      <g transform="rotate(-27 512 510)">
+        <ellipse cx="512" cy="510" rx="352" ry="140" fill="none" stroke="#7CC8FF" stroke-width="22"/>
+      </g>
+      <path d="M332 720 Q512 600 692 720 Z" fill="#B5763D" stroke="#9A5B32" stroke-width="10" stroke-linejoin="round"/>
+      <rect x="502" y="512" width="20" height="148" rx="10" fill="#57D27A"/>
+      <path d="M512 562 C455 565 415 520 420 456 C480 460 515 505 512 562Z" fill="#57D27A"/>
+      <path d="M512 545 C515 480 555 440 606 436 C612 500 575 545 512 545Z" fill="#8FE8A4"/>
+      <g transform="translate(722 313) rotate(-27)">
+        <rect x="-62" y="-14" width="30" height="28" rx="4" fill="#7CC8FF"/>
+        <rect x="32" y="-14" width="30" height="28" rx="4" fill="#7CC8FF"/>
+        <rect x="-40" y="-3" width="80" height="6" fill="#FACC15"/>
+        <circle r="26" fill="#FFD166"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- Pantalla de carga -->
+<div id="splash" role="status" aria-live="polite">
+  <svg class="logo-anim" viewBox="0 0 1024 1024" aria-hidden="true">
+    <circle cx="150" cy="170" r="7" fill="#CBD5E1" opacity=".7"/><circle cx="860" cy="220" r="5" fill="#CBD5E1" opacity=".6"/>
+    <circle cx="210" cy="780" r="5" fill="#CBD5E1" opacity=".6"/><circle cx="800" cy="820" r="7" fill="#CBD5E1" opacity=".5"/>
+    <g transform="rotate(-27 512 510)">
+      <ellipse cx="512" cy="510" rx="352" ry="140" fill="none" stroke="#7CC8FF" stroke-width="18" stroke-dasharray="14 18" opacity=".9"/>
+      <g class="orbit-sat"><circle r="30" fill="#FFD166"/><rect x="-70" y="-14" width="30" height="28" rx="4" fill="#7CC8FF"/><rect x="40" y="-14" width="30" height="28" rx="4" fill="#7CC8FF"/>
+        <animateMotion dur="2.6s" repeatCount="indefinite" path="M160,510 a352,140 0 1,0 704,0 a352,140 0 1,0 -704,0"/></g>
+    </g>
+    <path d="M332 720 Q512 600 692 720 Z" fill="#B5763D" stroke="#9A5B32" stroke-width="10"/>
+    <rect x="502" y="512" width="20" height="148" rx="10" fill="#57D27A"/>
+    <path d="M512 562 C455 565 415 520 420 456 C480 460 515 505 512 562Z" fill="#57D27A"/>
+    <path d="M512 545 C515 480 555 440 606 436 C612 500 575 545 512 545Z" fill="#8FE8A4"/>
+  </svg>
+  <h1>Satellite Seed</h1>
+  <p>SINCRONIZANDO ÓRBITA · NASA POWER</p>
+</div>
+
+<!-- =====================================================================
+     ENCABEZADO
+     ===================================================================== -->
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="#inicio" aria-label="Satellite Seed, inicio">
+      <svg aria-hidden="true"><use href="#logo"/></svg>
+      <div><div class="t1">Satellite Seed</div><div class="t2">NASA Space Apps 2026 · Field Shift</div></div>
+    </a>
+    <nav aria-label="Secciones">
+      <a href="#inicio">Mapa</a><a href="#clima">Clima</a><a href="#cultivos">Cultivos</a><a href="#rotacion">Rotación</a><a href="#comunidad">Comunidad</a><a href="#metodologia" class="sci-only">Metodología</a>
+    </nav>
+    <div class="mode-switch" role="group" aria-label="Modo de visualización">
+      <button type="button" id="btnEdu" aria-pressed="true" title="Lenguaje sencillo para productores"><i data-lucide="sprout"></i><span>Productor</span></button>
+      <button type="button" id="btnSci" aria-pressed="false" title="Parámetros, fórmulas y datos crudos"><i data-lucide="microscope"></i><span>Evaluador NASA</span></button>
+    </div>
+  </div>
+</header>
+
+<main>
+<!-- =====================================================================
+     MÓDULO A · MAPA GEOESPACIAL
+     ===================================================================== -->
+<section class="hero" id="inicio">
+  <div class="wrap">
+    <div class="eyebrow"><i data-lucide="satellite"></i> Datos abiertos de la NASA para el Arco Seco de Panamá</div>
+    <h1>Del satélite a tu finca: <span class="g">decide cuándo y qué sembrar</span> con 5 años de datos diarios.</h1>
+    <p class="lead edu-only">Elige tu pueblo o toca el mapa donde está tu finca. Satellite Seed revisa la lluvia y la temperatura de 2021 a 2025 en ese punto y te dice, en palabras sencillas, qué cultivos aguantan mejor y en qué mes conviene sembrar.</p>
+    <p class="lead sci-only">Consulta en vivo la API diaria de NASA POWER (comunidad <span class="mono">AG</span>, parámetros <span class="mono">PRECTOTCORR</span>, <span class="mono">T2M</span>, <span class="mono">T2M_MAX</span>, 2021-01-01 → 2025-12-31, <span class="mono">UTC</span>) y deriva indicadores hidrometeorológicos reproducibles para un motor de reglas agronómicas exploratorio.</p>
+
+    <div class="steps edu-only" aria-label="Cómo usar">
+      <div class="step"><span class="n">1</span>Elige tu pueblo o toca el mapa</div>
+      <div class="step"><span class="n">2</span>Mira cuánto llovió y cuánto duró la sequía</div>
+      <div class="step"><span class="n">3</span>Descubre qué sembrar y cuándo</div>
+    </div>
+
+    <div class="presets" id="presets" role="toolbar" aria-label="Localidades de Azuero"></div>
+
+    <div class="map-layout">
+      <div>
+        <div id="map" role="application" aria-label="Mapa interactivo de la Península de Azuero. Haz clic para elegir tu finca.">
+          <div class="map-fallback" id="mapFallback">Cargando mapa…</div>
+        </div>
+        <form class="coord-form" id="coordForm" autocomplete="off">
+          <label for="inLat">LAT</label><input id="inLat" type="number" step="0.0001" min="-90" max="90" value="7.45" required>
+          <label for="inLon">LON</label><input id="inLon" type="number" step="0.0001" min="-180" max="180" value="-80.35" required>
+          <button class="btn small sky" type="submit"><i data-lucide="crosshair"></i>Consultar punto</button>
+          <button class="btn small" type="button" id="btnGeo"><i data-lucide="locate-fixed"></i>Mi ubicación</button>
+        </form>
+      </div>
+
+      <aside class="side">
+        <div class="card pad" id="diagCard" aria-live="polite">
+          <div class="loc-head">
+            <div>
+              <h2 class="loc-name" id="locName">Agua Buena, Los Santos</h2>
+              <div class="loc-coords" id="locCoords">7.4500° N · 80.3500° O</div>
+            </div>
+            <span class="badge b-load" id="statusBadge"><span class="dot pulse"></span>Conectando…</span>
+          </div>
+          <div id="diagBody"></div>
+        </div>
+        <div id="sourceNote"></div>
+        <div class="card pad sci-only">
+          <h3 style="font-size:15px;margin-bottom:8px">Celda de malla de NASA POWER</h3>
+          <p style="margin:0;font-size:13.5px">El rectángulo azul del mapa marca la celda aproximada (≈0.5° × 0.625°, ~55 × 69 km en el ecuador) que representa este punto. Todas las fincas dentro de ella reciben el mismo valor: por eso el dato no sustituye a un pluviómetro en parcela.</p>
+          <div class="formula" id="gridInfo"><span class="lbl">Celda</span>—</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     MÓDULO B · PROCESAMIENTO HIDROMETEOROLÓGICO
+     ===================================================================== -->
+<section class="block" id="clima">
+  <div class="wrap">
+    <div class="eyebrow"><i data-lucide="cloud-rain"></i> Módulo B · Clima 2021–2025</div>
+    <h2 class="sec-title">Lo que el satélite vio sobre tu finca</h2>
+    <p class="sec-sub edu-only">Cuatro números resumen cinco años de clima. Cada uno trae una explicación de lo que significa para tu siembra.</p>
+    <p class="sec-sub sci-only">Indicadores derivados de la serie diaria. Los días con valor de relleno (−999) se excluyen y se reportan en la tabla.</p>
+
+    <div class="grid kpis" id="kpis"></div>
+
+    <div class="card pad" style="margin-top:18px" id="onsetCard"></div>
+
+    <div class="grid charts">
+      <div class="card pad">
+        <div class="chart-title"><h3>Climograma de tu punto</h3><span>Lluvia mensual promedio vs. temperatura</span></div>
+        <div class="chart-box"><canvas id="chartClimo" aria-label="Climograma: precipitación mensual promedio y temperatura media"></canvas></div>
+        <div class="meaning edu-only"><b class="q"><i data-lucide="lightbulb"></i>¿Qué significa esto para tu finca?</b>Las barras azules altas son los meses de agua. Siembra cuando las barras empiezan a subir de forma sostenida, no con el primer aguacero.</div>
+      </div>
+      <div class="card pad">
+        <div class="chart-title"><h3>Año por año</h3><span>Lluvia total y racha seca más larga</span></div>
+        <div class="chart-box"><canvas id="chartYears" aria-label="Comparativa interanual de lluvia total y racha seca máxima"></canvas></div>
+        <div class="meaning edu-only"><b class="q"><i data-lucide="lightbulb"></i>¿Qué significa esto para tu finca?</b>Ningún año es igual. Si un año trae menos barra azul y más línea dorada, fue un año de sequía: ahí conviene sembrar cultivos resistentes como sorgo o frijol de palo.</div>
+      </div>
+    </div>
+
+    <div class="card pad" style="margin-top:18px">
+      <div class="chart-title"><h3>Tabla anual</h3><span class="sci-only">Racha seca: días consecutivos con PRECTOTCORR &lt; 1.0 mm/día</span></div>
+      <div class="table-wrap" id="annualTable"></div>
+      <div class="actions">
+        <button class="btn sky" id="btnJSON"><i data-lucide="file-json"></i>Descargar JSON original NASA POWER</button>
+        <button class="btn" id="btnCSV"><i data-lucide="file-spreadsheet"></i>Exportar reporte CSV</button>
+        <label class="btn file-drop" title="Carga un archivo JSON descargado de NASA POWER">
+          <i data-lucide="upload"></i>Cargar JSON de NASA POWER
+          <input type="file" id="fileInput" accept=".json,application/json">
+        </label>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     MÓDULO C · SIMULADOR AGRONÓMICO
+     ===================================================================== -->
+<section class="block" id="cultivos">
+  <div class="wrap">
+    <div class="eyebrow"><i data-lucide="wheat"></i> Módulo C · Simulador de siembra</div>
+    <h2 class="sec-title">¿Qué pasa si siembro en <span id="monthTitle" style="color:var(--leaf)">mayo</span>?</h2>
+    <p class="sec-sub edu-only">Escoge el mes de siembra. Para cada cultivo repasamos los 5 años: ¿le habría alcanzado el agua? ¿habría sufrido una sequía larga?</p>
+    <p class="sec-sub sci-only">Para cada año <i>y</i> y mes de siembra <i>m</i> se evalúa la ventana [día 1 de <i>m</i>, +ciclo]. Se compara la lluvia efectiva con el requerimiento estacional y la racha seca de la ventana con la tolerancia del cultivo. El riesgo final es el promedio de los años disponibles.</p>
+    <div class="months" id="months" role="toolbar" aria-label="Mes de siembra"></div>
+    <div class="grid crops" id="crops"></div>
+
+    <div class="card pad calendar">
+      <div class="chart-title"><h3>Calendario de siembra recomendado</h3><span>Toca una celda para simular ese mes</span></div>
+      <div id="calendar"></div>
+      <div class="legend">
+        <span><i style="background:rgba(74,222,128,.75)"></i>Riesgo bajo</span>
+        <span><i style="background:rgba(250,204,21,.75)"></i>Riesgo medio</span>
+        <span><i style="background:rgba(248,113,113,.65)"></i>Riesgo alto</span>
+        <span><i style="background:#1b2b44"></i>Sin datos suficientes</span>
+      </div>
+    </div>
+
+    <div class="science-seal" role="note">
+      <i data-lucide="shield-check"></i>
+      <div>
+        <h4>Transparencia científica</h4>
+        <p>Los umbrales de cultivo (ciclo, agua requerida y tolerancia a sequía) son <b>referenciales</b>, tomados de rangos generales de la literatura agronómica (p. ej., FAO), y están diseñados para <b>validación local con especialistas del IDIAP y la Universidad Tecnológica de Panamá (UTP)</b>. Los datos de NASA POWER son estimaciones geoespaciales de modelos y satélites: <b>no reemplazan un pluviómetro en tu parcela</b> ni garantizan la cosecha.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     PLANIFICADOR DE ROTACIÓN
+     ===================================================================== -->
+<section class="block" id="rotacion">
+  <div class="wrap">
+    <div class="eyebrow"><i data-lucide="refresh-cw"></i> Planificador de rotación · 3 ciclos</div>
+    <h2 class="sec-title">Rota para proteger tu suelo</h2>
+    <p class="sec-sub edu-only">Sembrar siempre lo mismo cansa la tierra y atrae plagas. Te proponemos una secuencia de tres siembras que alterna cereales, leguminosas y cultivos resistentes a la sequía. Puedes cambiar cualquier cultivo y ver el riesgo al instante.</p>
+    <p class="sec-sub sci-only">Se evalúan secuencias candidatas (ciclo 1: primera; ciclo 2: postrera; ciclo 3: siguiente primera) minimizando el riesgo hídrico acumulado y maximizando la diversidad de familias botánicas y la inclusión de Fabaceae.</p>
+    <div class="rot-controls">
+      <label for="rotStart" style="font-size:14px">Inicio del ciclo 1:</label>
+      <select id="rotStart"></select>
+      <button class="btn small primary" id="btnBestRot"><i data-lucide="sparkles"></i>Sugerir la mejor secuencia</button>
+    </div>
+    <div class="rotation" id="rotation"></div>
+    <div class="rot-summary" id="rotSummary"></div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     MÓDULO D · EVIDENCIA COMUNITARIA
+     ===================================================================== -->
+<section class="block" id="comunidad">
+  <div class="wrap">
+    <div class="eyebrow"><i data-lucide="users"></i> Módulo D · Ground truth Azuero</div>
+    <h2 class="sec-title">Lo que nos dijeron los productores</h2>
+    <p class="sec-sub">Encuesta exploratoria a 10 productores de la Península de Azuero (2026). Es una muestra pequeña y no representativa: sirve para orientar el diseño, no para generalizar.</p>
+    <div class="grid survey" id="survey"></div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     METODOLOGÍA (Modo Evaluador NASA)
+     ===================================================================== -->
+<section class="block sci-only" id="metodologia">
+  <div class="wrap">
+    <div class="eyebrow"><i data-lucide="flask-conical"></i> Metodología y reproducibilidad</div>
+    <h2 class="sec-title">Cómo se calcula cada número</h2>
+    <p class="sec-sub">Todo el procesamiento ocurre en el navegador, a partir del JSON crudo que puedes descargar arriba. Cualquier evaluador puede repetir el cálculo.</p>
+    <div class="grid method">
+      <div class="card pad">
+        <h3 style="font-size:16px;margin-bottom:12px">Fuente y parámetros</h3>
+        <dl class="params">
+          <dt>Producto</dt><dd>NASA POWER · Daily API (temporal/daily/point)</dd>
+          <dt>Comunidad</dt><dd><span class="mono">AG</span> (Agroclimatología)</dd>
+          <dt>PRECTOTCORR</dt><dd>Precipitación total corregida (mm/día)</dd>
+          <dt>T2M</dt><dd>Temperatura media del aire a 2 m (°C)</dd>
+          <dt>T2M_MAX</dt><dd>Temperatura máxima a 2 m (°C) · estrés térmico</dd>
+          <dt>Periodo</dt><dd>2021-01-01 → 2025-12-31</dd>
+          <dt>Estándar</dt><dd><span class="mono">time-standard=UTC</span></dd>
+          <dt>Resolución</dt><dd>Meteorología basada en MERRA-2 (≈0.5° × 0.625°). La precipitación corregida integra productos satelitales/reanálisis según la versión de POWER: consulte la documentación de metodología.</dd>
+          <dt>Relleno</dt><dd>Valor <span class="mono">-999</span> excluido del cálculo</dd>
+        </dl>
+        <p style="font-size:13px;margin:14px 0 6px">Consulta efectuada para el punto actual:</p>
+        <div class="api-url" id="apiUrl">—</div>
+      </div>
+      <div class="card pad">
+        <h3 style="font-size:16px;margin-bottom:12px">Fórmulas</h3>
+        <div class="formula"><span class="lbl">Lluvia anual</span>P<sub>año</sub> = Σ PRECTOTCORR<sub>d</sub> , d ∈ año, valores válidos</div>
+        <div class="formula"><span class="lbl">Racha seca máxima</span>RS = max(longitud de secuencias consecutivas con PRECTOTCORR<sub>d</sub> &lt; 1.0 mm)</div>
+        <div class="formula"><span class="lbl">Veranillo</span>RS calculada solo entre 1-may y 30-nov (estación lluviosa)</div>
+        <div class="formula"><span class="lbl">Inicio de lluvias (por año)</span>primer día d ≥ 1-mar con Σ P<sub>d..d+2</sub> ≥ 20 mm y sin racha seca ≥ 10 días en los 30 días siguientes</div>
+        <div class="formula"><span class="lbl">Balance hídrico del cultivo</span>R = (η · Σ P<sub>ventana</sub>) / W<sub>req</sub> , η = 0.80 (lluvia efectiva)<br>riesgo<sub>agua</sub>: R ≥ 1 → 0 · 0.7 ≤ R &lt; 1 → 1 · R &lt; 0.7 → 2</div>
+        <div class="formula"><span class="lbl">Riesgo por sequía</span>RS<sub>ventana</sub> ≤ τ → 0 · ≤ 1.5τ → 1 · &gt; 1.5τ → 2 (τ = tolerancia del cultivo)</div>
+        <div class="formula"><span class="lbl">Riesgo final</span>r<sub>año</sub> = max(riesgo<sub>agua</sub>, riesgo<sub>sequía</sub>, riesgo<sub>térmico</sub>) ; r̄ = media de años → &lt;0.5 bajo · &lt;1.25 medio · resto alto</div>
+      </div>
+      <div class="card pad">
+        <h3 style="font-size:16px;margin-bottom:12px">Limitaciones declaradas</h3>
+        <ul style="margin:0;padding-left:18px;font-size:14px">
+          <li>Resolución gruesa: una celda representa decenas de km; la orografía local y las lluvias convectivas aisladas no se resuelven.</li>
+          <li>Serie de 5 años: describe la variabilidad reciente, no una climatología de 30 años.</li>
+          <li>La lluvia efectiva y los umbrales son simplificaciones; no se modela evapotranspiración, suelo ni riego.</li>
+          <li>Requiere contraste con estaciones del IMHPA y pluviómetros en finca antes de su uso operativo.</li>
+        </ul>
+      </div>
+      <div class="card pad">
+        <h3 style="font-size:16px;margin-bottom:12px">Contexto institucional</h3>
+        <ul style="margin:0;padding-left:18px;font-size:14px">
+          <li><b>MiAMBIENTE</b>: Programa LADA y Cuarta Comunicación Nacional sobre Cambio Climático (2023) — déficit hídrico del Arco Seco.</li>
+          <li><b>IDIAP</b>: diagnóstico agrario de Los Pozos, Herrera — estacionalidad seca y sistemas productivos.</li>
+          <li><b>IMHPA</b>: referencia metodológica del Índice Estandarizado de Precipitación.</li>
+          <li><b>NASA</b>: POWER, Earth Observatory/Landsat (referencia visual) y NASA Harvest (marco conceptual).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- =====================================================================
+     PIE DE PÁGINA · DECLARACIÓN DE TRANSPARENCIA
+     ===================================================================== -->
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="#inicio" style="margin-bottom:12px"><svg aria-hidden="true"><use href="#logo"/></svg><div><div class="t1">Satellite Seed</div><div class="t2">Field Shift · NASA Space Apps Challenge 2026</div></div></a>
+        <p><b style="color:var(--text)">Declaración de transparencia.</b> Proyecto desarrollado por <b style="color:var(--text)">Valerie Arelis Delgado Vergara</b> — Licenciatura en Desarrollo y Gestión de Software, Universidad Tecnológica de Panamá (UTP), Centro Regional de Azuero — para el NASA Space Apps Challenge 2026.</p>
+        <p>Se utilizaron herramientas de inteligencia artificial como apoyo técnico y editorial (arquitectura del código, depuración y estructuración documental), con verificación humana de fuentes, datos de la encuesta y límites científicos del prototipo.</p>
+      </div>
+      <div>
+        <h4>Datos</h4>
+        <p>NASA POWER Daily API (PRECTOTCORR, T2M, T2M_MAX · comunidad AG). Encuesta exploratoria propia, Azuero 2026 (n=10, anonimizada).</p>
+        <p>Mapas base: Esri World Imagery, CARTO, OpenTopoMap y colaboradores de OpenStreetMap.</p>
+      </div>
+      <div>
+        <h4>Estado del proyecto</h4>
+        <p>Prueba de concepto en fase de validación. Umbrales agronómicos referenciales, pendientes de validación con IDIAP y UTP. No es un servicio de pronóstico.</p>
+      </div>
+    </div>
+    <div class="legal">NASA no respalda ninguna entidad no gubernamental y no es responsable de la información contenida en este sitio. Satellite Seed es un proyecto independiente desarrollado para el NASA International Space Apps Challenge. Los datos de NASA POWER se usan conforme a su política de datos abiertos.</div>
+  </div>
+</footer>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- Librerías (CDN) -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+<script>
+/* =======================================================================
+   SATELLITE SEED · Lógica de la aplicación
+   Estructura:
+     1. Configuración y catálogos (localidades, cultivos, encuesta)
+     2. Utilidades
+     3. DataService  → API en vivo, caché, archivo local, JSON embebido, demo
+     4. Analytics    → indicadores hidrometeorológicos
+     5. CropEngine   → simulador de siembra y calendario
+     6. Rotation     → planificador de 3 ciclos
+     7. UI           → render de módulos, gráficos, mapa, exportaciones
+     8. Arranque
+   ======================================================================= */
+'use strict';
+
+/* -----------------------------------------------------------------------
+   1. CONFIGURACIÓN
+   ----------------------------------------------------------------------- */
+const CONFIG = {
+  START: '20210101',
+  END: '20251231',
+  YEARS: [2021, 2022, 2023, 2024, 2025],
+  PARAMS: 'PRECTOTCORR,T2M,T2M_MAX',
+  API_TIMEOUT_MS: 30000,
+  DRY_DAY_MM: 1.0,              // umbral de día seco (mm/día)
+  EFFECTIVE_RAIN: 0.80,         // η, fracción de lluvia efectiva
+  HEAT_TMAX: 35,                // °C, umbral de estrés térmico con T2M_MAX
+  HEAT_TMEAN: 30,               // °C, umbral alterno si solo hay T2M
+  WET_MONTH_MM: 100,            // mes "lluvioso" en climatología
+  LOCAL_JSON: 'data/nasa_power_agua_buena_2021_2025.json',
+  CACHE_PREFIX: 'ss_power_v1_',
+  DEFAULT: { lat: 7.45, lon: -80.35, name: 'Agua Buena, Los Santos' },
+  AZUERO_BOUNDS: { latMin: 7.15, latMax: 8.35, lonMin: -81.2, lonMax: -79.9 }
+};
+
+/* JSON de referencia embebido (opcional).
+   Para un modo offline 100 % con datos reales, pega aquí el JSON completo que
+   devuelve NASA POWER para Agua Buena (7.45, -80.35, 20210101–20251231).
+   Ejemplo:  const EMBEDDED_REFERENCE_JSON = { "type":"Feature", ... };
+   Si se deja en null, la app usará el archivo data/…json o, en última
+   instancia, una serie SINTÉTICA claramente rotulada como demostración. */
+const EMBEDDED_REFERENCE_JSON = null;
+
+const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const MONTHS_S = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+/* Localidades de Azuero (coordenadas aproximadas del centro poblado) */
+const PRESETS = [
+  { name: 'Agua Buena, Los Santos', lat: 7.45,  lon: -80.35 },
+  { name: 'Chitré, Herrera',        lat: 7.961, lon: -80.429 },
+  { name: 'Las Tablas, Los Santos', lat: 7.765, lon: -80.274 },
+  { name: 'Los Pozos, Herrera',     lat: 7.783, lon: -80.645 },
+  { name: 'Guararé, Los Santos',    lat: 7.815, lon: -80.283 },
+  { name: 'Pedasí, Los Santos',     lat: 7.530, lon: -80.025 },
+  { name: 'Macaracas, Los Santos',  lat: 7.731, lon: -80.553 }
+];
+
+/* Catálogo de cultivos · UMBRALES REFERENCIALES (literatura general, p. ej. FAO).
+   cycle: días a cosecha · water: requerimiento estacional de referencia (mm)
+   dryTol: racha seca tolerable dentro del ciclo (días) · tOpt: rango térmico medio (°C) */
+const CROPS = [
+  { id:'maiz',   name:'Maíz',                    sci:'Zea mays',              emoji:'🌽', family:'Poaceae',     group:'cereal',
+    cycle:110, water:550, waterRange:'500–800', dryTol:10, tOpt:[18,32], drought:'Media-baja',
+    note:'Muy sensible a la falta de agua en floración (≈ día 55–70).',
+    soil:'Deja abundante rastrojo que protege el suelo si no se quema.' },
+  { id:'arroz',  name:'Arroz secano',            sci:'Oryza sativa',          emoji:'🌾', family:'Poaceae',     group:'cereal',
+    cycle:120, water:800, waterRange:'800–1200', dryTol:7, tOpt:[20,33], drought:'Baja',
+    note:'Depende totalmente de la lluvia: el más exigente en agua.',
+    soil:'Conviene alternarlo con leguminosas para reponer nitrógeno.' },
+  { id:'frijol', name:'Frijol (Vigna) / poroto', sci:'Vigna unguiculata',     emoji:'🫘', family:'Fabaceae',    group:'leguminosa',
+    cycle:75,  water:350, waterRange:'300–500', dryTol:12, tOpt:[20,32], drought:'Media-alta',
+    note:'Ciclo corto: ideal para la postrera.',
+    soil:'Fija nitrógeno del aire y cubre rápido el suelo.' },
+  { id:'guandu', name:'Frijol de palo / guandú', sci:'Cajanus cajan',         emoji:'🌿', family:'Fabaceae',    group:'leguminosa',
+    cycle:180, water:650, waterRange:'600–1000', dryTol:25, tOpt:[18,35], drought:'Alta',
+    note:'Raíz profunda: sigue produciendo cuando empieza el verano.',
+    soil:'Fija nitrógeno y su raíz rompe capas compactadas.' },
+  { id:'sorgo',  name:'Sorgo',                   sci:'Sorghum bicolor',       emoji:'🌾', family:'Poaceae',     group:'tolerante',
+    cycle:110, water:450, waterRange:'450–650', dryTol:18, tOpt:[20,35], drought:'Alta',
+    note:'“Aguanta” la sequía deteniendo su crecimiento y rebrotando.',
+    soil:'Raíces fibrosas que mejoran la estructura del suelo.' },
+  { id:'yuca',   name:'Yuca',                    sci:'Manihot esculenta',     emoji:'🥔', family:'Euphorbiaceae', group:'tolerante',
+    cycle:300, water:1000, waterRange:'1000–1500', dryTol:45, tOpt:[18,35], drought:'Alta',
+    note:'Ciclo largo: soporta meses secos una vez establecida.',
+    soil:'Extrae muchos nutrientes: rotar con leguminosas.' }
+];
+const CROP = Object.fromEntries(CROPS.map(c => [c.id, c]));
+
+/* Secuencias candidatas de rotación (ciclo 1 → ciclo 2 → ciclo 3) */
+const ROTATION_CANDIDATES = [
+  ['maiz','frijol','sorgo'], ['maiz','guandu','sorgo'], ['sorgo','frijol','maiz'],
+  ['arroz','frijol','maiz'], ['maiz','frijol','arroz'], ['sorgo','guandu','maiz'],
+  ['arroz','frijol','sorgo'], ['maiz','frijol','yuca'], ['sorgo','frijol','yuca']
+];
+
+/* Hallazgos de la encuesta exploratoria (n=10) */
+const SURVEY = [
+  { k:7, n:10, color:'#FACC15', icon:'cloud-sun-rain', title:'Lluvias inciertas o sequía',
+    text:'reportan el inicio incierto de lluvias o la sequía como su mayor amenaza.',
+    answer:'Detectamos el inicio real de lluvias año por año y simulamos el riesgo de sembrar en cada mes.' },
+  { k:6, n:10, color:'#60B5FF', icon:'shield-question', title:'Desconfianza en la información',
+    text:'consideran poco o nada confiable la información climática que reciben.',
+    answer:'Mostramos la fuente, el método y los límites de cada dato, y dejamos descargar el JSON original de la NASA.' },
+  { k:9, n:10, color:'#4ADE80', icon:'smartphone', title:'Usarían una herramienta local',
+    text:'usarían una herramienta localizada como Satellite Seed.',
+    answer:'Localidades de Azuero a un toque, lenguaje sencillo y diseño que funciona en el celular.' }
+];
+
+/* -----------------------------------------------------------------------
+   2. UTILIDADES
+   ----------------------------------------------------------------------- */
+const $ = (sel, root = document) => root.querySelector(sel);
+const fmt = (v, d = 1) => (v == null || !isFinite(v)) ? '—' : Number(v).toLocaleString('es-PA', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmt0 = v => fmt(v, 0);
+const mean = arr => { const a = arr.filter(x => x != null && isFinite(x)); return a.length ? a.reduce((s, x) => s + x, 0) / a.length : null; };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const coordLabel = (lat, lon) => `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'} · ${Math.abs(lon).toFixed(4)}° ${lon >= 0 ? 'E' : 'O'}`;
+const dateLabel = d => d ? `${d.d} ${MONTHS_S[d.m - 1].toLowerCase()} ${d.y}` : '—';
+const icons = () => { try { if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons(); } catch (e) { /* iconos opcionales */ } };
+let toastTimer = null;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3600);
+}
+function download(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+function apiUrl(lat, lon) {
+  return `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=${CONFIG.PARAMS}&community=AG` +
+         `&longitude=${lon.toFixed(4)}&latitude=${lat.toFixed(4)}&start=${CONFIG.START}&end=${CONFIG.END}&format=JSON&time-standard=UTC`;
+}
+/* Celda aproximada de la malla MERRA-2 (0.5° lat × 0.625° lon) */
+function gridCell(lat, lon) {
+  const dLat = 0.5, dLon = 0.625;
+  const cLat = Math.round((lat + 90) / dLat) * dLat - 90;
+  const cLon = Math.round((lon + 180) / dLon) * dLon - 180;
+  return { cLat, cLon, bounds: [[cLat - dLat / 2, cLon - dLon / 2], [cLat + dLat / 2, cLon + dLon / 2]] };
+}
+/* SVG de carga reutilizable (satélite orbitando la plántula) */
+function orbitLoaderSVG() {
+  return `<svg viewBox="0 0 1024 1024" aria-hidden="true">
+    <g transform="rotate(-27 512 510)"><ellipse cx="512" cy="510" rx="352" ry="140" fill="none" stroke="#60B5FF" stroke-width="22" stroke-dasharray="16 20"/>
+    <g class="orbit-sat"><circle r="34" fill="#FFD166"/><rect x="-76" y="-16" width="34" height="32" rx="4" fill="#7CC8FF"/><rect x="42" y="-16" width="34" height="32" rx="4" fill="#7CC8FF"/>
+    <animateMotion dur="2.2s" repeatCount="indefinite" path="M160,510 a352,140 0 1,0 704,0 a352,140 0 1,0 -704,0"/></g></g>
+    <path d="M332 720 Q512 600 692 720 Z" fill="#B5763D" stroke="#9A5B32" stroke-width="10"/>
+    <rect x="502" y="512" width="20" height="148" rx="10" fill="#57D27A"/>
+    <path d="M512 562 C455 565 415 520 420 456 C480 460 515 505 512 562Z" fill="#57D27A"/>
+    <path d="M512 545 C515 480 555 440 606 436 C612 500 575 545 512 545Z" fill="#8FE8A4"/></svg>`;
+}
+
+/* -----------------------------------------------------------------------
+   3. DATA SERVICE · cadena de respaldo
+      a) API NASA POWER en vivo  → b) caché del navegador
+      c) archivo local data/…json → d) JSON embebido → e) demo sintética
+   ----------------------------------------------------------------------- */
+const DataService = {
+  cacheKey(lat, lon) { return CONFIG.CACHE_PREFIX + lat.toFixed(3) + '_' + lon.toFixed(3); },
+
+  readCache(lat, lon) {
+    try { const s = localStorage.getItem(this.cacheKey(lat, lon)); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+  },
+  writeCache(lat, lon, json) {
+    try { localStorage.setItem(this.cacheKey(lat, lon), JSON.stringify(json)); } catch (e) { /* cuota llena o almacenamiento bloqueado */ }
+  },
+
+  async fetchLive(lat, lon) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CONFIG.API_TIMEOUT_MS);
+    try {
+      const res = await fetch(apiUrl(lat, lon), { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      if (!json || !json.properties || !json.properties.parameter) throw new Error('Respuesta sin parámetros');
+      return json;
+    } finally { clearTimeout(timer); }
+  },
+
+  async fetchLocalFile() {
+    if (location.protocol === 'file:') return null; // fetch local no está permitido en file://
+    try {
+      const res = await fetch(CONFIG.LOCAL_JSON, { cache: 'no-store' });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json && json.properties && json.properties.parameter ? json : null;
+    } catch (e) { return null; }
+  },
+
+  /* Serie sintética de DEMOSTRACIÓN (cadena de Markov + exponencial).
+     NO son datos de la NASA: solo mantienen la interfaz operativa sin conexión. */
+  synthetic(lat, lon) {
+    let seed = Math.floor(Math.abs(lat * 1000) * 31 + Math.abs(lon * 1000) * 17) || 12345;
+    const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    const pWet = [.05,.03,.05,.20,.55,.60,.45,.60,.65,.70,.50,.15];
+    const amt  = [3,2.5,3,6.5,8.5,8,6.5,8,8.5,9.5,7,4.5];
+    const yearFactor = { 2021: 1.0, 2022: 1.08, 2023: 0.72, 2024: 0.92, 2025: 1.0 };
+    const P = {}, T = {}, TX = {};
+    let wet = false;
+    for (let d = new Date(Date.UTC(2021, 0, 1)); d <= new Date(Date.UTC(2025, 11, 31)); d.setUTCDate(d.getUTCDate() + 1)) {
+      const m = d.getUTCMonth(), y = d.getUTCFullYear();
+      const key = `${y}${String(m + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+      const p = wet ? Math.min(.92, pWet[m] + .22) : pWet[m] * .8;
+      wet = rnd() < p * (yearFactor[y] > .9 ? 1 : .85);
+      P[key] = wet ? +(-amt[m] * yearFactor[y] * Math.log(1 - rnd())).toFixed(2) : +(rnd() * 0.6).toFixed(2);
+      const doy = (d - Date.UTC(y, 0, 1)) / 864e5;
+      const t = 27 + 0.9 * Math.sin((doy - 60) / 365 * 2 * Math.PI) + (rnd() - .5) * 1.2 + (y === 2023 ? .4 : 0);
+      T[key] = +t.toFixed(2); TX[key] = +(t + 5 + rnd() * 2.2).toFixed(2);
+    }
+    return { type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat, null] },
+      properties: { parameter: { PRECTOTCORR: P, T2M: T, T2M_MAX: TX } },
+      header: { title: 'SERIE SINTÉTICA DE DEMOSTRACIÓN — NO SON DATOS DE NASA POWER', fill_value: -999 },
+      _synthetic: true };
+  },
+
+  /* Orquestador: devuelve { json, source } */
+  async load(lat, lon) {
+    try {
+      const json = await this.fetchLive(lat, lon);
+      this.writeCache(lat, lon, json);
+      return { json, source: 'live' };
+    } catch (err) {
+      console.info('[Satellite Seed] API NASA POWER no disponible, activando respaldo:', err && err.message ? err.message : err);
+    }
+    const cached = this.readCache(lat, lon);
+    if (cached) return { json: cached, source: 'cache' };
+    const local = await this.fetchLocalFile();
+    if (local) return { json: local, source: 'reference' };
+    if (EMBEDDED_REFERENCE_JSON) return { json: EMBEDDED_REFERENCE_JSON, source: 'reference' };
+    return { json: this.synthetic(CONFIG.DEFAULT.lat, CONFIG.DEFAULT.lon), source: 'demo' };
+  },
+
+  /* Convierte el JSON de POWER a una serie diaria ordenada */
+  parse(json) {
+    const par = json.properties.parameter;
+    const fill = (json.header && json.header.fill_value != null) ? json.header.fill_value : -999;
+    const P = par.PRECTOTCORR || {}, T = par.T2M || {}, TX = par.T2M_MAX || null;
+    const keys = Object.keys(P).sort();
+    const valid = v => (v == null || v === fill || v <= -990 || !isFinite(v)) ? null : Number(v);
+    const days = keys.map(k => ({
+      key: k, y: +k.slice(0, 4), m: +k.slice(4, 6), d: +k.slice(6, 8),
+      p: valid(P[k]), t: valid(T[k]), tx: TX ? valid(TX[k]) : null
+    }));
+    const coords = json.geometry && json.geometry.coordinates ? json.geometry.coordinates : null;
+    return { days, hasTmax: !!TX, coords };
+  }
+};
+
+/* -----------------------------------------------------------------------
+   4. ANALYTICS · indicadores hidrometeorológicos
+   ----------------------------------------------------------------------- */
+const Analytics = {
+  /* Racha seca máxima en un rango de índices [i0, i1] */
+  maxDrySpell(days, i0, i1) {
+    let best = 0, cur = 0, curStart = i0, bestStart = null, bestEnd = null;
+    for (let i = i0; i <= i1 && i < days.length; i++) {
+      const p = days[i].p;
+      if (p != null && p < CONFIG.DRY_DAY_MM) {
+        if (cur === 0) curStart = i;
+        cur++;
+        if (cur > best) { best = cur; bestStart = curStart; bestEnd = i; }
+      } else { cur = 0; }
+    }
+    return { len: best, start: bestStart != null ? days[bestStart] : null, end: bestEnd != null ? days[bestEnd] : null };
+  },
+
+  /* Inicio de la estación lluviosa (criterio agroclimático simplificado) */
+  onset(days, idxByKey, year) {
+    const i0 = idxByKey[`${year}0301`], iLimit = idxByKey[`${year}0831`];
+    if (i0 == null || iLimit == null) return null;
+    for (let i = i0; i <= iLimit; i++) {
+      const s = (days[i].p || 0) + ((days[i + 1] && days[i + 1].p) || 0) + ((days[i + 2] && days[i + 2].p) || 0);
+      if (s >= 20) {
+        const ds = this.maxDrySpell(days, i + 1, Math.min(i + 30, days.length - 1));
+        if (ds.len < 10) return days[i];
+      }
+    }
+    return null;
+  },
+
+  compute(series) {
+    const { days, hasTmax } = series;
+    const idxByKey = {}; days.forEach((d, i) => { idxByKey[d.key] = i; });
+    const years = [...new Set(days.map(d => d.y))].sort();
+    const annual = years.map(y => {
+      const ix = days.map((d, i) => d.y === y ? i : -1).filter(i => i >= 0);
+      const i0 = ix[0], i1 = ix[ix.length - 1];
+      const sub = days.slice(i0, i1 + 1);
+      const pv = sub.filter(d => d.p != null);
+      const total = pv.reduce((s, d) => s + d.p, 0);
+      const missing = sub.length - pv.length;
+      const rainy = pv.filter(d => d.p >= CONFIG.DRY_DAY_MM).length;
+      const tmean = mean(sub.map(d => d.t));
+      const heat = hasTmax ? sub.filter(d => d.tx != null && d.tx >= CONFIG.HEAT_TMAX).length
+                           : sub.filter(d => d.t != null && d.t >= CONFIG.HEAT_TMEAN).length;
+      const dry = this.maxDrySpell(days, i0, i1);
+      const ws = idxByKey[`${y}0501`], we = idxByKey[`${y}1130`];
+      const veranillo = (ws != null && we != null) ? this.maxDrySpell(days, ws, we) : { len: null };
+      const onset = this.onset(days, idxByKey, y);
+      return { year: y, total, missing, rainy, tmean, heat, dry, veranillo, onset, nDays: sub.length };
+    });
+
+    /* Climatología mensual: total mensual por año → promedio entre años */
+    const monthly = Array.from({ length: 12 }, (_, m) => {
+      const totals = [], temps = [];
+      years.forEach(y => {
+        const sub = days.filter(d => d.y === y && d.m === m + 1);
+        if (!sub.length) return;
+        const pv = sub.filter(d => d.p != null);
+        if (pv.length >= sub.length * 0.8) totals.push(pv.reduce((s, d) => s + d.p, 0) * sub.length / pv.length);
+        temps.push(mean(sub.map(d => d.t)));
+      });
+      return { m: m + 1, p: mean(totals), t: mean(temps) };
+    });
+
+    const wetMonths = monthly.filter(x => x.p != null && x.p >= CONFIG.WET_MONTH_MM).map(x => x.m);
+    /* Primer mes lluvioso tras el período seco (busca desde marzo) */
+    let firstWet = null, lastWet = null;
+    for (let k = 2; k < 12; k++) { if (monthly[k].p >= CONFIG.WET_MONTH_MM) { firstWet = k + 1; break; } }
+    for (let k = 11; k >= 0; k--) { if (monthly[k].p >= CONFIG.WET_MONTH_MM) { lastWet = k + 1; break; } }
+
+    const onsetDOYs = annual.filter(a => a.onset).map(a => (Date.UTC(a.onset.y, a.onset.m - 1, a.onset.d) - Date.UTC(a.onset.y, 0, 1)) / 864e5 + 1);
+    const meanOnsetDOY = mean(onsetDOYs);
+    let meanOnset = null;
+    if (meanOnsetDOY != null) { const dt = new Date(Date.UTC(2021, 0, Math.round(meanOnsetDOY))); meanOnset = { d: dt.getUTCDate(), m: dt.getUTCMonth() + 1 }; }
+
+    const full = annual.filter(a => a.nDays >= 360);
+    const driest = full.length ? full.reduce((a, b) => (b.total < a.total ? b : a)) : null;
+    const worstSpell = full.length ? full.reduce((a, b) => (b.dry.len > a.dry.len ? b : a)) : null;
+
+    return {
+      idxByKey, years, annual, monthly, wetMonths, firstWet, lastWet, meanOnset, hasTmax,
+      meanAnnualP: mean(full.map(a => a.total)),
+      meanT: mean(days.map(d => d.t)),
+      meanDry: mean(full.map(a => a.dry.len)),
+      meanVeranillo: mean(full.map(a => a.veranillo.len)),
+      meanHeat: mean(full.map(a => a.heat)),
+      driest, worstSpell,
+      totalMissing: annual.reduce((s, a) => s + a.missing, 0)
+    };
+  }
+};
+
+/* -----------------------------------------------------------------------
+   5. CROP ENGINE · simulador “¿qué pasa si siembro en [mes]?”
+   ----------------------------------------------------------------------- */
+const CropEngine = {
+  evaluate(crop, month, series, stats) {
+    const { days } = series;
+    const out = [];
+    stats.years.forEach(y => {
+      const i0 = stats.idxByKey[`${y}${String(month).padStart(2, '0')}01`];
+      if (i0 == null) return;
+      const i1 = i0 + crop.cycle - 1;
+      if (i1 >= days.length) return; // la ventana sale del período de datos
+      let P = 0, valid = 0;
+      for (let i = i0; i <= i1; i++) if (days[i].p != null) { P += days[i].p; valid++; }
+      if (valid < crop.cycle * 0.8) return;
+      P = P * crop.cycle / valid;
+      const R = (CONFIG.EFFECTIVE_RAIN * P) / crop.water;
+      const ds = Analytics.maxDrySpell(days, i0, i1).len;
+      const tW = mean(days.slice(i0, i1 + 1).map(d => d.t));
+      const rWater = R >= 1 ? 0 : R >= 0.7 ? 1 : 2;
+      const rDry = ds <= crop.dryTol ? 0 : ds <= crop.dryTol * 1.5 ? 1 : 2;
+      const rHeat = (tW != null && (tW < crop.tOpt[0] || tW > crop.tOpt[1])) ? 1 : 0;
+      out.push({ year: y, P, R, ds, tW, rWater, rDry, rHeat, r: Math.max(rWater, rDry, rHeat) });
+    });
+    if (!out.length) return { risk: 'nd', score: null, years: [], n: 0, ok: 0 };
+    const score = mean(out.map(o => o.r));
+    const risk = score < 0.5 ? 'bajo' : score < 1.25 ? 'medio' : 'alto';
+    return {
+      risk, score, years: out, n: out.length, ok: out.filter(o => o.r === 0).length,
+      meanP: mean(out.map(o => o.P)), meanR: mean(out.map(o => o.R)), meanDs: mean(out.map(o => o.ds)), maxDs: Math.max(...out.map(o => o.ds))
+    };
+  },
+  matrix(series, stats) {
+    const M = {};
+    CROPS.forEach(c => { M[c.id] = Array.from({ length: 12 }, (_, k) => this.evaluate(c, k + 1, series, stats)); });
+    return M;
+  }
+};
+
+/* -----------------------------------------------------------------------
+   6. ROTATION · planificador de 3 ciclos
+   ----------------------------------------------------------------------- */
+const Rotation = {
+  nextMonth(m, add) { return ((m - 1 + add) % 12) + 1; },
+  /* Ciclo 1 en el mes de inicio; ciclo 2 al terminar el 1 (postrera);
+     ciclo 3 en el mismo mes de inicio del año siguiente (nueva primera). */
+  schedule(seq, start) {
+    const m2 = this.nextMonth(start, Math.ceil(CROP[seq[0]].cycle / 30));
+    return [start, m2, start];
+  },
+  riskValue(r) { return r === 'bajo' ? 0 : r === 'medio' ? 1 : r === 'alto' ? 2 : 2.5; },
+  evaluate(seq, start, matrix) {
+    const months = this.schedule(seq, start);
+    const evals = seq.map((id, k) => matrix[id][months[k] - 1]);
+    const riskSum = evals.reduce((s, e) => s + this.riskValue(e.risk), 0);
+    const families = new Set(seq.map(id => CROP[id].family)).size;
+    const legume = seq.some(id => CROP[id].family === 'Fabaceae');
+    const repeats = seq[0] === seq[1] || seq[1] === seq[2];
+    const score = riskSum - (legume ? 0.8 : 0) - (families - 1) * 0.4 + (repeats ? 1.5 : 0)
+                  + (CROP[seq[0]].cycle > 200 ? 0.6 : 0); // yuca como ciclo 1 bloquea la postrera
+    return { seq, months, evals, riskSum, families, legume, score };
+  },
+  best(start, matrix) {
+    return ROTATION_CANDIDATES.map(s => this.evaluate(s, start, matrix)).sort((a, b) => a.score - b.score)[0];
+  }
+};
+
+/* -----------------------------------------------------------------------
+   7. UI
+   ----------------------------------------------------------------------- */
+const state = {
+  lat: CONFIG.DEFAULT.lat, lon: CONFIG.DEFAULT.lon, name: CONFIG.DEFAULT.name,
+  raw: null, source: null, series: null, stats: null, matrix: null,
+  month: 5, rotStart: 5, rotSeq: null, reqId: 0, charts: {}
+};
+
+const RISK_UI = {
+  bajo:  { cls: 'b-low',  label: 'Riesgo bajo',  color: '#4ADE80' },
+  medio: { cls: 'b-mid',  label: 'Riesgo medio', color: '#FACC15' },
+  alto:  { cls: 'b-high', label: 'Riesgo alto',  color: '#F87171' },
+  nd:    { cls: 'b-nd',   label: 'Sin datos',    color: '#8EA3BF' }
+};
+const SOURCE_UI = {
+  live:      { cls: 'b-live',  text: 'En vivo: NASA POWER API', icon: 'radio' },
+  cache:     { cls: 'b-cache', text: 'Modo Caché de Referencia', icon: 'database' },
+  reference: { cls: 'b-cache', text: 'Modo Caché de Referencia', icon: 'database' },
+  file:      { cls: 'b-live',  text: 'Archivo NASA POWER cargado', icon: 'file-check' },
+  demo:      { cls: 'b-demo',  text: 'Demo sintética (sin conexión)', icon: 'triangle-alert' }
+};
+
+/* ---------- Mapa (Leaflet) ---------- */
+const MapUI = {
+  map: null, marker: null, cell: null,
+  init() {
+    if (!window.L) { $('#mapFallback').textContent = 'No se pudo cargar el mapa (sin conexión a la librería Leaflet). Usa las localidades o escribe las coordenadas.'; return; }
+    $('#mapFallback').remove();
+    const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 18, attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics' });
+    const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19, subdomains: 'abcd', attribution: '© OpenStreetMap · © CARTO' });
+    const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      maxZoom: 17, subdomains: 'abc', attribution: '© OpenStreetMap · SRTM · © OpenTopoMap' });
+    this.map = L.map('map', { center: [7.65, -80.4], zoom: 9, layers: [sat], zoomControl: true, attributionControl: true });
+    L.control.layers({ 'Satélite (Esri World Imagery)': sat, 'Mapa oscuro (CARTO)': dark, 'Topográfico (OpenTopoMap)': topo }, null, { position: 'topright' }).addTo(this.map);
+    L.control.scale({ metric: true, imperial: false }).addTo(this.map);
+    PRESETS.forEach(p => {
+      L.circleMarker([p.lat, p.lon], { radius: 5, color: '#FACC15', weight: 2, fillColor: '#0A1D37', fillOpacity: 1 })
+        .addTo(this.map).bindTooltip(p.name.split(',')[0], { direction: 'top', offset: [0, -4] })
+        .on('click', ev => { L.DomEvent.stopPropagation(ev); selectLocation(p.lat, p.lon, p.name); });
+    });
+    let t = null;
+    this.map.on('click', e => { clearTimeout(t); t = setTimeout(() => selectLocation(e.latlng.lat, e.latlng.lng, null), 180); });
+    this.update(state.lat, state.lon, state.name);
+  },
+  update(lat, lon, name) {
+    if (!this.map) return;
+    const icon = L.divIcon({ className: '', html: '<div class="farm-pin"><span class="ring"></span><span class="core"></span></div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+    if (this.marker) this.marker.setLatLng([lat, lon]); else this.marker = L.marker([lat, lon], { icon, keyboard: false }).addTo(this.map);
+    this.marker.bindPopup(`<b>${esc(name || 'Mi finca')}</b><br><span style="font-family:var(--font-mono);font-size:12px">${coordLabel(lat, lon)}</span>`);
+    const g = gridCell(lat, lon);
+    if (this.cell) this.cell.setBounds(g.bounds);
+    else this.cell = L.rectangle(g.bounds, { color: '#60B5FF', weight: 1.5, dashArray: '6 6', fill: true, fillOpacity: 0.06, interactive: false }).addTo(this.map);
+    if (!this.map.getBounds().pad(-0.15).contains([lat, lon])) this.map.flyTo([lat, lon], Math.max(this.map.getZoom(), 9), { duration: 0.8 });
+  }
+};
+
+/* ---------- Selección de ubicación ---------- */
+async function selectLocation(lat, lon, name) {
+  lat = +(+lat).toFixed(4); lon = +(+lon).toFixed(4);
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) { toast('Coordenadas no válidas.'); return; }
+  const preset = PRESETS.find(p => Math.abs(p.lat - lat) < 1e-3 && Math.abs(p.lon - lon) < 1e-3);
+  state.lat = lat; state.lon = lon; state.name = name || (preset ? preset.name : 'Punto seleccionado');
+  $('#inLat').value = lat; $('#inLon').value = lon;
+  document.querySelectorAll('#presets .chip').forEach(c => c.classList.toggle('active', c.dataset.name === state.name));
+  $('#locName').textContent = state.name;
+  $('#locCoords').textContent = coordLabel(lat, lon);
+  $('#apiUrl').textContent = apiUrl(lat, lon);
+  const g = gridCell(lat, lon);
+  $('#gridInfo').innerHTML = `<span class="lbl">Celda ≈ MERRA-2</span>centro ${g.cLat.toFixed(3)}, ${g.cLon.toFixed(3)} · lat [${g.bounds[0][0].toFixed(3)}, ${g.bounds[1][0].toFixed(3)}] · lon [${g.bounds[0][1].toFixed(3)}, ${g.bounds[1][1].toFixed(3)}]`;
+  MapUI.update(lat, lon, state.name);
+  setStatus('loading');
+  renderLoading();
+  const id = ++state.reqId;
+  const { json, source } = await DataService.load(lat, lon);
+  if (id !== state.reqId) return; // llegó una consulta más reciente
+  applyData(json, source);
+}
+
+function applyData(json, source) {
+  try {
+    state.raw = json; state.source = source;
+    state.series = DataService.parse(json);
+    if (!state.series.days.length) throw new Error('Serie vacía');
+    state.stats = Analytics.compute(state.series);
+    state.matrix = CropEngine.matrix(state.series, state.stats);
+    if (state.stats.firstWet) { state.month = state.stats.firstWet; state.rotStart = state.stats.firstWet; }
+    state.rotSeq = null;
+    setStatus(source);
+    renderAll();
+  } catch (e) {
+    console.warn('[Satellite Seed] JSON no válido:', e.message);
+    toast('El archivo no tiene el formato de NASA POWER (properties.parameter.PRECTOTCORR).');
+    if (!state.stats) applyData(DataService.synthetic(state.lat, state.lon), 'demo');
+  }
+}
+
+function setStatus(src) {
+  const b = $('#statusBadge');
+  if (src === 'loading') { b.className = 'badge b-load'; b.innerHTML = '<span class="dot pulse"></span>Consultando NASA POWER…'; return; }
+  const u = SOURCE_UI[src];
+  b.className = 'badge ' + u.cls;
+  b.innerHTML = `<span class="dot ${src === 'live' ? 'pulse' : ''}"></span>${u.text}`;
+}
+
+function renderLoading() {
+  $('#diagBody').innerHTML = `<div class="loading-card">${orbitLoaderSVG()}<p>El satélite está revisando 1 826 días de clima sobre este punto…</p><span class="mono">GET power.larc.nasa.gov · 2021–2025</span></div>`;
+}
+
+/* ---------- Render global ---------- */
+function renderAll() {
+  renderSourceNote();
+  renderDiagnosis();
+  renderKPIs();
+  renderOnset();
+  renderCharts();
+  renderTable();
+  renderMonths();
+  renderCrops();
+  renderCalendar();
+  renderRotationControls();
+  renderRotation();
+  icons();
+}
+
+function renderSourceNote() {
+  const el = $('#sourceNote');
+  const s = state.source;
+  const pointMismatch = (s === 'reference' || s === 'demo') && (Math.abs(state.lat - CONFIG.DEFAULT.lat) > 1e-3 || Math.abs(state.lon - CONFIG.DEFAULT.lon) > 1e-3);
+  const outside = state.lat < CONFIG.AZUERO_BOUNDS.latMin || state.lat > CONFIG.AZUERO_BOUNDS.latMax || state.lon < CONFIG.AZUERO_BOUNDS.lonMin || state.lon > CONFIG.AZUERO_BOUNDS.lonMax;
+  let html = '';
+  if (s === 'live') html += `<div class="warn-box blue"><i data-lucide="satellite-dish"></i><div>Datos recibidos ahora mismo desde la API diaria de NASA POWER para este punto.</div></div>`;
+  if (s === 'cache') html += `<div class="warn-box"><i data-lucide="database"></i><div>Sin respuesta de la API: se muestran los datos de NASA POWER guardados en este navegador de una consulta anterior al mismo punto.</div></div>`;
+  if (s === 'reference') html += `<div class="warn-box"><i data-lucide="database"></i><div>Sin respuesta de la API: se cargaron los datos verificados de referencia de NASA POWER para Agua Buena (2021–2025).${pointMismatch ? ' <b>Ojo:</b> no corresponden al punto que elegiste.' : ''}</div></div>`;
+  if (s === 'file') html += `<div class="warn-box blue"><i data-lucide="file-check"></i><div>Datos tomados del archivo JSON de NASA POWER que cargaste.</div></div>`;
+  if (s === 'demo') html += `<div class="warn-box red"><i data-lucide="triangle-alert"></i><div><b>Sin conexión y sin datos de referencia.</b> Se muestra una serie <b>sintética de demostración</b> (no son datos de la NASA) solo para que puedas explorar la herramienta. Conéctate a internet o carga un JSON de NASA POWER.</div></div>`;
+  if (outside) html += `<div class="warn-box" style="margin-top:10px"><i data-lucide="map-pinned"></i><div>Este punto está fuera de la Península de Azuero. Las reglas de cultivo fueron pensadas para el Arco Seco de Panamá.</div></div>`;
+  el.innerHTML = html;
+}
+
+function renderDiagnosis() {
+  const st = state.stats;
+  const P = st.meanAnnualP, V = st.meanVeranillo;
+  let level = 'g', title = 'Condiciones favorables', text = 'Lluvia suficiente y veranillos cortos en los últimos años. Buen punto para cereales en primera.';
+  if (P == null) { level = 'y'; title = 'Datos incompletos'; text = 'No hay suficientes años completos para un diagnóstico.'; }
+  else if (P < 900 || (V != null && V > 25)) { level = 'r'; title = 'Estrés hídrico alto'; text = 'Poca lluvia o veranillos muy largos. Prioriza sorgo, frijol de palo y yuca, y guarda agua.'; }
+  else if (P < 1200 || (V != null && V > 15)) { level = 'y'; title = 'Precaución: agua justa'; text = 'La lluvia alcanza, pero hay veranillos que pueden dañar el maíz o el arroz. Siembra con la lluvia ya establecida.'; }
+  $('#diagBody').innerHTML = `
+    <div class="traffic fade-in">
+      <div class="light" aria-hidden="true"><i class="r ${level === 'r' ? 'on' : ''}"></i><i class="y ${level === 'y' ? 'on' : ''}"></i><i class="g ${level === 'g' ? 'on' : ''}"></i></div>
+      <div><h3>${title}</h3><p>${text}</p></div>
+    </div>
+    <div class="mini-kpis fade-in">
+      <div><small>Lluvia anual (prom.)</small><strong>${fmt0(P)} <small style="display:inline">mm</small></strong></div>
+      <div><small>Temperatura media</small><strong>${fmt(st.meanT)} <small style="display:inline">°C</small></strong></div>
+      <div><small>Veranillo más largo (prom.)</small><strong>${fmt0(V)} <small style="display:inline">días</small></strong></div>
+      <div><small>Inicio de lluvias (prom.)</small><strong>${st.meanOnset ? st.meanOnset.d + ' ' + MONTHS_S[st.meanOnset.m - 1].toLowerCase() : '—'}</strong></div>
+    </div>
+    <p class="sci-only" style="font-size:12px;margin:12px 0 0;color:var(--muted)">Semáforo referencial: rojo si P̄ &lt; 900 mm o veranillo &gt; 25 d; amarillo si P̄ &lt; 1200 mm o veranillo &gt; 15 d.</p>
+    <a href="#cultivos" class="btn primary" style="margin-top:14px;width:100%;justify-content:center"><i data-lucide="sprout"></i>Ver qué sembrar aquí</a>`;
+}
+
+function renderKPIs() {
+  const st = state.stats;
+  const d = st.driest, w = st.worstSpell;
+  const heatLbl = st.hasTmax ? `días/año con T2M_MAX ≥ ${CONFIG.HEAT_TMAX} °C` : `días/año con T2M ≥ ${CONFIG.HEAT_TMEAN} °C`;
+  const cards = [
+    { icon: 'cloud-rain', color: 'var(--sky)', bg: 'var(--sky-soft)', label: 'Lluvia acumulada anual (promedio)', param: 'PRECTOTCORR',
+      value: fmt0(st.meanAnnualP), unit: 'mm/año',
+      meaning: `Es como si cada año cayera una lámina de agua de ${fmt(st.meanAnnualP / 10, 0)} cm sobre tu finca. ${d ? `El año más seco fue ${d.year}, con ${fmt0(d.total)} mm.` : ''}`,
+      formula: 'P̄ = (1/N) Σ<sub>años</sub> Σ<sub>d</sub> PRECTOTCORR<sub>d</sub>  [mm]' },
+    { icon: 'thermometer-sun', color: 'var(--sun)', bg: 'var(--sun-soft)', label: 'Temperatura media del aire a 2 m', param: 'T2M',
+      value: fmt(st.meanT), unit: '°C',
+      meaning: `Clima cálido todo el año: la temperatura casi nunca frena la siembra; el que manda es el agua. En promedio hubo ${fmt0(st.meanHeat)} ${heatLbl.replace('días/año', 'días al año')} (calor que estresa al maíz en floración).`,
+      formula: `T̄ = media(T2M<sub>d</sub>) · estrés: ${heatLbl}` },
+    { icon: 'sun', color: 'var(--sun)', bg: 'var(--sun-soft)', label: 'Racha seca máxima (peor año)', param: '< 1.0 mm/día',
+      value: w ? fmt0(w.dry.len) : '—', unit: 'días',
+      meaning: w ? `En ${w.year} pasaron ${w.dry.len} días seguidos casi sin lluvia (del ${dateLabel(w.dry.start)} al ${dateLabel(w.dry.end)}). Es la parte más dura del verano: no siembres sin riego en ese periodo.` : 'Sin datos suficientes.',
+      formula: 'RS = max |{d … d+k}| : PRECTOTCORR &lt; 1.0 mm ∀ d' },
+    { icon: 'cloud-sun', color: 'var(--soil-2)', bg: 'var(--soil-soft)', label: 'Veranillo dentro de la época lluviosa', param: 'may–nov',
+      value: fmt0(st.meanVeranillo), unit: 'días (prom.)',
+      meaning: `Aun en invierno hay pausas sin lluvia. En promedio la más larga duró ${fmt0(st.meanVeranillo)} días: si tu cultivo está floreciendo en ese momento, puede perderse. Por eso importa elegir bien el mes.`,
+      formula: 'RS<sub>veranillo</sub> = RS evaluada entre 1-may y 30-nov de cada año' }
+  ];
+  $('#kpis').innerHTML = cards.map(c => `
+    <article class="card pad kpi fade-in">
+      <div class="top-row"><div class="ico" style="background:${c.bg};color:${c.color}"><i data-lucide="${c.icon}"></i></div><span class="param">${c.param}</span></div>
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value}<small>${c.unit}</small></div>
+      <div class="meaning"><b class="q"><i data-lucide="lightbulb"></i>¿Qué significa esto para tu finca?</b>${c.meaning}</div>
+      <div class="formula sci-only"><span class="lbl">Cálculo</span>${c.formula}</div>
+    </article>`).join('');
+}
+
+function renderOnset() {
+  const st = state.stats;
+  const wet = st.firstWet && st.lastWet ? `de <b style="color:var(--text)">${MONTHS[st.firstWet - 1]}</b> a <b style="color:var(--text)">${MONTHS[st.lastWet - 1]}</b>` : 'no identificada';
+  $('#onsetCard').innerHTML = `
+    <div class="chart-title"><h3><i data-lucide="calendar-range" style="width:18px;height:18px;vertical-align:-3px;color:var(--leaf)"></i> ¿Cuándo empiezan de verdad las lluvias?</h3><span class="sci-only">Criterio: ≥20 mm en 3 días sin racha ≥10 d en los 30 siguientes</span></div>
+    <p style="margin:0">Temporada lluviosa típica (meses con ≥ ${CONFIG.WET_MONTH_MM} mm): ${wet}. Inicio detectado cada año:</p>
+    <div class="onset-row">${st.annual.map(a => `<span class="o">${a.year}: <b>${a.onset ? a.onset.d + ' ' + MONTHS_S[a.onset.m - 1].toLowerCase() : 'no detectado'}</b></span>`).join('')}</div>
+    <div class="meaning"><b class="q"><i data-lucide="lightbulb"></i>¿Qué significa esto para tu finca?</b>El primer aguacero engaña. Espera a que las lluvias se asienten (fechas de arriba) antes de sembrar: así la semilla no se seca en un veranillo temprano.</div>`;
+}
+
+/* ---------- Gráficos (Chart.js) ---------- */
+function renderCharts() {
+  if (!window.Chart) {
+    ['#chartClimo', '#chartYears'].forEach(s => { const c = $(s); if (c) c.parentElement.innerHTML = '<p style="color:var(--muted);font-size:14px">No se pudo cargar la librería de gráficos. Los valores están en la tabla.</p>'; });
+    return;
+  }
+  Chart.defaults.color = '#CBD5E1';
+  Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+  Chart.defaults.borderColor = 'rgba(30,63,102,.6)';
+  Object.values(state.charts).forEach(c => c && c.destroy());
+  const st = state.stats;
+  const tooltip = { backgroundColor: '#112A4A', borderColor: '#1E3F66', borderWidth: 1, titleColor: '#F8FAFC', bodyColor: '#CBD5E1', padding: 10, cornerRadius: 10 };
+
+  const cx = $('#chartClimo');
+  if (cx) state.charts.climo = new Chart(cx, {
+    data: {
+      labels: MONTHS_S,
+      datasets: [
+        { type: 'bar', label: 'Lluvia mensual promedio (mm)', data: st.monthly.map(m => m.p != null ? +m.p.toFixed(1) : null),
+          backgroundColor: st.monthly.map(m => m.p >= CONFIG.WET_MONTH_MM ? 'rgba(96,181,255,.85)' : 'rgba(96,181,255,.35)'), borderRadius: 6, yAxisID: 'y' },
+        { type: 'line', label: 'Temperatura media (°C)', data: st.monthly.map(m => m.t != null ? +m.t.toFixed(2) : null),
+          borderColor: '#FACC15', backgroundColor: '#FACC15', tension: .35, pointRadius: 3, borderWidth: 2.5, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, usePointStyle: true } }, tooltip },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'mm/mes' }, grid: { color: 'rgba(30,63,102,.5)' } },
+        y1: { position: 'right', title: { display: true, text: '°C' }, grid: { display: false },
+              suggestedMin: Math.floor((Math.min(...st.monthly.map(m => m.t || 99))) - 2), suggestedMax: Math.ceil((Math.max(...st.monthly.map(m => m.t || 0))) + 2) },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+
+  const full = st.annual;
+  const cy = $('#chartYears');
+  if (cy) state.charts.years = new Chart(cy, {
+    data: {
+      labels: full.map(a => a.year === 2023 ? ['2023', 'El Niño'] : String(a.year)),
+      datasets: [
+        { type: 'bar', label: 'Lluvia total (mm)', data: full.map(a => +a.total.toFixed(1)),
+          backgroundColor: full.map(a => st.driest && a.year === st.driest.year ? 'rgba(154,91,50,.9)' : 'rgba(96,181,255,.8)'), borderRadius: 6, yAxisID: 'y' },
+        { type: 'line', label: 'Racha seca máxima (días)', data: full.map(a => a.dry.len),
+          borderColor: '#FACC15', backgroundColor: '#FACC15', pointRadius: 5, pointHoverRadius: 7, borderWidth: 2.5, tension: .25, yAxisID: 'y1' },
+        { type: 'line', label: 'Veranillo may–nov (días)', data: full.map(a => a.veranillo.len),
+          borderColor: '#4ADE80', backgroundColor: '#4ADE80', borderDash: [6, 5], pointRadius: 4, borderWidth: 2, tension: .25, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, usePointStyle: true } }, tooltip },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'mm/año' }, grid: { color: 'rgba(30,63,102,.5)' } },
+        y1: { position: 'right', beginAtZero: true, title: { display: true, text: 'días' }, grid: { display: false } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderTable() {
+  const st = state.stats;
+  const heatCol = st.hasTmax ? `Días T<sub>máx</sub> ≥ ${CONFIG.HEAT_TMAX} °C` : `Días T ≥ ${CONFIG.HEAT_TMEAN} °C`;
+  $('#annualTable').innerHTML = `
+    <table class="data">
+      <thead><tr>
+        <th>Año</th><th class="num">Lluvia total (mm)</th><th class="num">Temp. media (°C)</th>
+        <th class="num">Racha seca máx. (días)</th><th>Periodo de la racha</th><th class="num">Veranillo may–nov (días)</th>
+        <th>Inicio de lluvias</th><th class="num sci-only">Días con lluvia ≥1 mm</th><th class="num sci-only">${heatCol}</th><th class="num sci-only">Días sin dato</th>
+      </tr></thead>
+      <tbody>${st.annual.map(a => `
+        <tr class="${st.driest && a.year === st.driest.year ? 'hl' : ''}">
+          <td><b style="color:var(--text)">${a.year}</b>${a.year === 2023 ? ' <span class="badge b-cache" style="margin-left:4px">El Niño</span>' : ''}${a.nDays < 360 ? ' <span class="badge b-nd">incompleto</span>' : ''}</td>
+          <td class="num">${fmt(a.total)}</td><td class="num">${fmt(a.tmean, 2)}</td>
+          <td class="num">${a.dry.len}</td><td>${a.dry.start ? dateLabel(a.dry.start) + ' → ' + dateLabel(a.dry.end) : '—'}</td>
+          <td class="num">${a.veranillo.len != null ? a.veranillo.len : '—'}</td>
+          <td>${a.onset ? dateLabel(a.onset) : 'no detectado'}</td>
+          <td class="num sci-only">${a.rainy}</td><td class="num sci-only">${a.heat}</td><td class="num sci-only">${a.missing}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <p style="font-size:12.5px;color:var(--muted);margin:10px 0 0">Fila resaltada: año más seco del periodo. La etiqueta “El Niño” marca el evento 2023–2024 como contexto climático; los valores se calculan siempre a partir de la serie cargada.</p>`;
+}
+
+/* ---------- Simulador de cultivos ---------- */
+function renderMonths() {
+  $('#monthTitle').textContent = MONTHS[state.month - 1];
+  $('#months').innerHTML = MONTHS_S.map((m, k) =>
+    `<button type="button" class="chip ${k + 1 === state.month ? 'active' : ''}" data-m="${k + 1}" aria-pressed="${k + 1 === state.month}">${m}</button>`).join('');
+}
+
+function riskSentence(c, e) {
+  if (e.risk === 'nd') return 'No hay suficientes años completos para evaluar este mes.';
+  const m = MONTHS[state.month - 1];
+  const base = `Si siembras ${c.name.toLowerCase()} en ${m}, en <b>${e.ok} de ${e.n} años</b> habría tenido agua suficiente y sin sequías dañinas.`;
+  if (e.risk === 'bajo') return base + ' 👍 Buen mes para este cultivo.';
+  if (e.risk === 'medio') return base + ' ⚠️ Es posible, pero vigila los veranillos o elige una variedad precoz.';
+  return base + ' ⛔ Alto riesgo de pérdida: busca otro mes u otro cultivo.';
+}
+
+function renderCrops() {
+  const m = state.month;
+  $('#crops').innerHTML = CROPS.map(c => {
+    const e = state.matrix[c.id][m - 1];
+    const ui = RISK_UI[e.risk];
+    const pct = e.meanR != null ? Math.min(100, Math.round(e.meanR * 100)) : 0;
+    return `
+    <article class="card pad crop fade-in" style="--rc:${ui.color}">
+      <div class="head">
+        <div class="emoji" aria-hidden="true">${c.emoji}</div>
+        <div style="flex:1;min-width:0"><h3>${c.name}</h3><div class="sci-name">${c.sci} · ${c.family}</div></div>
+        <span class="badge ${ui.cls}">${ui.label}</span>
+      </div>
+      <div class="facts">
+        <div><small>Ciclo</small><b>${c.cycle} d</b></div>
+        <div><small>Agua requerida</small><b>${c.waterRange} mm</b></div>
+        <div><small>Aguanta sequía</small><b>${c.drought}</b></div>
+      </div>
+      <div class="meter" role="img" aria-label="Cobertura de agua ${pct}%"><span style="width:${pct}%"></span></div>
+      <div class="meter-legend"><span>Agua cubierta por la lluvia</span><b style="color:var(--text)">${e.meanR != null ? pct + '%' : '—'}</b></div>
+      <p class="verdict edu-only">${riskSentence(c, e)}</p>
+      <p class="edu-only" style="font-size:13px;color:var(--muted);margin:6px 0 0">💡 ${c.note}</p>
+      <div class="sci-only" style="font-size:13px;margin-top:10px">
+        <div class="formula"><span class="lbl">Ventana ${MONTHS_S[m - 1]} + ${c.cycle} d · n=${e.n} años</span>
+          ΣP̄ = ${fmt0(e.meanP)} mm · R̄ = ${fmt(e.meanR, 2)} · RS̄ = ${fmt(e.meanDs)} d (máx ${e.n ? e.maxDs : '—'}) · τ = ${c.dryTol} d · W<sub>req</sub> = ${c.water} mm · r̄ = ${fmt(e.score, 2)}</div>
+      </div>
+      <div class="years-dots" aria-label="Resultado por año">${e.years.map(y => {
+        const u = RISK_UI[['bajo', 'medio', 'alto'][y.r]];
+        return `<span class="${u.cls}" title="${y.year}: lluvia ${fmt0(y.P)} mm, racha seca ${y.ds} d">${y.year}</span>`;
+      }).join('')}</div>
+    </article>`;
+  }).join('');
+}
+
+function renderCalendar() {
+  $('#calendar').innerHTML = `<table>
+    <thead><tr><th></th>${MONTHS_S.map(m => `<th>${m}</th>`).join('')}</tr></thead>
+    <tbody>${CROPS.map(c => `<tr><th class="crop-h" scope="row">${c.emoji} ${c.name}</th>${state.matrix[c.id].map((e, k) =>
+      `<td class="r-${e.risk} ${k + 1 === state.month ? 'sel' : ''}" data-m="${k + 1}" tabindex="0" role="button"
+           aria-label="${c.name}, siembra en ${MONTHS[k]}: ${RISK_UI[e.risk].label}" title="${c.name} · ${MONTHS[k]}: ${RISK_UI[e.risk].label}">${e.risk === 'bajo' ? '✓' : e.risk === 'medio' ? '!' : e.risk === 'alto' ? '✕' : '·'}</td>`).join('')}</tr>`).join('')}
+    </tbody></table>`;
+}
+
+function setMonth(m) {
+  state.month = m;
+  renderMonths(); renderCrops(); renderCalendar(); icons();
+}
+
+/* ---------- Rotación ---------- */
+function renderRotationControls() {
+  $('#rotStart').innerHTML = MONTHS.map((m, k) => `<option value="${k + 1}" ${k + 1 === state.rotStart ? 'selected' : ''}>${m[0].toUpperCase() + m.slice(1)}${state.stats.firstWet === k + 1 ? ' (inicio de lluvias)' : ''}</option>`).join('');
+}
+
+function renderRotation() {
+  if (!state.rotSeq) state.rotSeq = Rotation.best(state.rotStart, state.matrix).seq.slice();
+  const ev = Rotation.evaluate(state.rotSeq, state.rotStart, state.matrix);
+  const labels = ['Ciclo 1 · Primera', 'Ciclo 2 · Postrera', 'Ciclo 3 · Primera siguiente'];
+  const why = (id, k) => {
+    const c = CROP[id];
+    if (k === 1 && c.family === 'Fabaceae') return `🌱 Leguminosa después del cereal: ${c.soil}`;
+    if (c.group === 'tolerante') return `🛡️ Cultivo resistente a la sequía: ${c.soil}`;
+    return `🌾 ${c.soil}`;
+  };
+  $('#rotation').innerHTML = state.rotSeq.map((id, k) => {
+    const e = ev.evals[k]; const ui = RISK_UI[e.risk];
+    return `<div class="cycle fade-in">
+      <div class="cn">${labels[k]}</div>
+      <label class="sr-only" for="rot${k}">Cultivo del ${labels[k]}</label>
+      <select id="rot${k}" data-k="${k}">${CROPS.map(c => `<option value="${c.id}" ${c.id === id ? 'selected' : ''}>${c.emoji} ${c.name}</option>`).join('')}</select>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="when">Siembra en <b style="color:var(--text)">${MONTHS[ev.months[k] - 1]}</b> · ${CROP[id].cycle} días</span>
+        <span class="badge ${ui.cls}">${ui.label}</span>
+      </div>
+      <div class="why">${why(id, k)}</div>
+    </div>`;
+  }).join('');
+  const famTxt = ev.families >= 3 ? 'Excelente diversidad: 3 familias botánicas distintas.' : ev.families === 2 ? 'Buena diversidad: 2 familias botánicas.' : 'Poca diversidad: la misma familia en todos los ciclos favorece plagas.';
+  $('#rotSummary').innerHTML = `
+    <div><b>${ev.legume ? '✅ Incluye leguminosa' : '⚠️ Sin leguminosa'}</b>${ev.legume ? 'El frijol o el guandú fijan nitrógeno del aire y reducen la necesidad de fertilizante para el siguiente cereal.' : 'Agrega frijol o frijol de palo para devolverle nitrógeno al suelo.'}</div>
+    <div><b>🧬 ${famTxt.split(':')[0]}</b>${famTxt.includes(':') ? famTxt.split(':')[1] : famTxt} Rotar familias corta el ciclo de plagas y enfermedades.</div>
+    <div><b>💧 Riesgo hídrico de la secuencia</b>${ev.evals.map(e => RISK_UI[e.risk].label.replace('Riesgo ', '')).join(' → ')}. <span class="sci-only mono" style="font-size:12px">Σr = ${fmt(ev.riskSum, 1)} · puntaje = ${fmt(ev.score, 2)}</span></div>`;
+}
+
+/* ---------- Encuesta ---------- */
+function renderSurvey() {
+  const C = 2 * Math.PI * 52;
+  $('#survey').innerHTML = SURVEY.map((s, i) => `
+    <article class="card pad fade-in">
+      <div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" fill="none" stroke="#0a1a31" stroke-width="12"/>
+        <circle class="fg" data-i="${i}" cx="60" cy="60" r="52" fill="none" stroke="${s.color}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
+        <div class="val">${s.k * 10}%</div></div>
+      <div class="people" aria-label="${s.k} de ${s.n} productores">${Array.from({ length: s.n }, (_, k) =>
+        `<svg viewBox="0 0 24 24" fill="${k < s.k ? s.color : '#1E3F66'}" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8z"/></svg>`).join('')}</div>
+      <h3>${s.title}</h3>
+      <p class="c"><b style="color:var(--text)">${s.k} de cada ${s.n}</b> productores ${s.text}</p>
+      <div class="response"><b><i data-lucide="${s.icon}"></i>Cómo responde Satellite Seed</b>${s.answer}</div>
+    </article>`).join('');
+  const animate = () => document.querySelectorAll('#survey circle.fg').forEach(c => { const s = SURVEY[+c.dataset.i]; c.style.strokeDashoffset = C * (1 - s.k / s.n); });
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver(en => { if (en.some(e => e.isIntersecting)) { animate(); io.disconnect(); } }, { threshold: .3 });
+    io.observe($('#survey'));
+  } else animate();
+}
+
+/* ---------- Exportaciones ---------- */
+function exportJSON() {
+  if (!state.raw) return;
+  const tag = state.source === 'demo' ? 'SINTETICO_DEMO_' : 'nasa_power_daily_';
+  download(`${tag}${state.lat.toFixed(4)}_${state.lon.toFixed(4)}_${CONFIG.START}_${CONFIG.END}.json`, JSON.stringify(state.raw, null, 1), 'application/json');
+  toast(state.source === 'demo' ? 'Descargado. Atención: es la serie SINTÉTICA, no datos de la NASA.' : 'JSON original de NASA POWER descargado.');
+}
+function exportCSV() {
+  const st = state.stats; if (!st) return;
+  const q = v => `"${String(v).replace(/"/g, '""')}"`;
+  const L = [];
+  L.push(['Satellite Seed - Reporte'].map(q).join(','));
+  L.push([q('Ubicacion'), q(state.name)].join(','));
+  L.push([q('Latitud'), state.lat, q('Longitud'), state.lon].join(','));
+  L.push([q('Fuente'), q(SOURCE_UI[state.source].text), q('Generado'), q(new Date().toISOString())].join(','));
+  L.push([q('Consulta API'), q(apiUrl(state.lat, state.lon))].join(','));
+  L.push('');
+  L.push(['anio', 'precip_total_mm', 'temp_media_C', 'racha_seca_max_dias', 'racha_inicio', 'racha_fin', 'veranillo_may_nov_dias', 'inicio_lluvias', 'dias_lluvia_ge1mm', 'dias_estres_termico', 'dias_sin_dato'].join(','));
+  st.annual.forEach(a => L.push([a.year, a.total.toFixed(2), a.tmean != null ? a.tmean.toFixed(2) : '', a.dry.len,
+    a.dry.start ? a.dry.start.key : '', a.dry.end ? a.dry.end.key : '', a.veranillo.len != null ? a.veranillo.len : '',
+    a.onset ? a.onset.key : '', a.rainy, a.heat, a.missing].join(',')));
+  L.push('');
+  L.push(['mes', 'precip_media_mm', 'temp_media_C'].join(','));
+  st.monthly.forEach(m => L.push([m.m, m.p != null ? m.p.toFixed(2) : '', m.t != null ? m.t.toFixed(2) : ''].join(',')));
+  L.push('');
+  L.push(['cultivo', ...MONTHS_S.map(m => 'riesgo_' + m)].map(q).join(','));
+  CROPS.forEach(c => L.push([q(c.name), ...state.matrix[c.id].map(e => e.risk)].join(',')));
+  L.push('');
+  L.push(q('Umbrales agronomicos referenciales; requieren validacion local (IDIAP/UTP). Datos satelitales/modelo, no sustituyen pluviometros en parcela.'));
+  download(`satellite_seed_reporte_${state.lat.toFixed(4)}_${state.lon.toFixed(4)}.csv`, '﻿' + L.join('\n'), 'text/csv;charset=utf-8');
+  toast('Reporte CSV exportado.');
+}
+
+/* ---------- Eventos ---------- */
+function bindEvents() {
+  $('#presets').innerHTML = PRESETS.map(p => `<button type="button" class="chip" data-name="${esc(p.name)}" data-lat="${p.lat}" data-lon="${p.lon}"><i data-lucide="map-pin"></i>${esc(p.name.split(',')[0])}</button>`).join('');
+  $('#presets').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) selectLocation(+b.dataset.lat, +b.dataset.lon, b.dataset.name); });
+  $('#coordForm').addEventListener('submit', e => { e.preventDefault(); selectLocation(+$('#inLat').value, +$('#inLon').value, null); });
+  $('#btnGeo').addEventListener('click', () => {
+    if (!navigator.geolocation) { toast('Tu navegador no permite geolocalización.'); return; }
+    navigator.geolocation.getCurrentPosition(p => selectLocation(p.coords.latitude, p.coords.longitude, 'Mi ubicación'),
+      () => toast('No se pudo obtener tu ubicación. Toca el mapa o elige un pueblo.'), { timeout: 10000 });
+  });
+  $('#months').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) setMonth(+b.dataset.m); });
+  const calPick = e => { const td = e.target.closest('td[data-m]'); if (td) { setMonth(+td.dataset.m); $('#cultivos').scrollIntoView({ behavior: 'smooth' }); } };
+  $('#calendar').addEventListener('click', calPick);
+  $('#calendar').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); calPick(e); } });
+  $('#rotStart').addEventListener('change', e => { state.rotStart = +e.target.value; renderRotation(); icons(); });
+  $('#btnBestRot').addEventListener('click', () => { state.rotSeq = null; renderRotation(); icons(); toast('Secuencia con menor riesgo y mayor beneficio para el suelo.'); });
+  $('#rotation').addEventListener('change', e => { const s = e.target.closest('select[data-k]'); if (s) { state.rotSeq[+s.dataset.k] = s.value; renderRotation(); icons(); } });
+  $('#btnJSON').addEventListener('click', exportJSON);
+  $('#btnCSV').addEventListener('click', exportCSV);
+  $('#fileInput').addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const json = JSON.parse(r.result);
+        if (!json.properties || !json.properties.parameter || !json.properties.parameter.PRECTOTCORR) throw new Error('formato');
+        const c = json.geometry && json.geometry.coordinates;
+        if (c && isFinite(c[0]) && isFinite(c[1])) {
+          state.lat = +c[1]; state.lon = +c[0]; state.name = 'Archivo: ' + f.name;
+          $('#locName').textContent = state.name; $('#locCoords').textContent = coordLabel(state.lat, state.lon);
+          $('#inLat').value = state.lat; $('#inLon').value = state.lon; $('#apiUrl').textContent = apiUrl(state.lat, state.lon);
+          MapUI.update(state.lat, state.lon, state.name);
+        }
+        state.reqId++;
+        applyData(json, 'file');
+        toast('Archivo de NASA POWER cargado correctamente.');
+      } catch (err) { toast('El archivo no es un JSON válido de NASA POWER.'); }
+      e.target.value = '';
+    };
+    r.readAsText(f);
+  });
+  const setMode = sci => {
+    document.body.classList.toggle('mode-sci', sci); document.body.classList.toggle('mode-edu', !sci);
+    $('#btnSci').setAttribute('aria-pressed', sci); $('#btnEdu').setAttribute('aria-pressed', !sci);
+    try { localStorage.setItem('ss_mode', sci ? 'sci' : 'edu'); } catch (e) { /* opcional */ }
+    if (state.charts.climo) state.charts.climo.resize();
+    if (state.charts.years) state.charts.years.resize();
+  };
+  $('#btnEdu').addEventListener('click', () => setMode(false));
+  $('#btnSci').addEventListener('click', () => { setMode(true); toast('Modo Evaluador NASA: parámetros, fórmulas y datos crudos visibles.'); });
+  try { if (localStorage.getItem('ss_mode') === 'sci') setMode(true); } catch (e) { /* opcional */ }
+
+  /* Resalta la sección activa en la navegación */
+  if ('IntersectionObserver' in window) {
+    const links = [...document.querySelectorAll('.top nav a')];
+    const io = new IntersectionObserver(entries => entries.forEach(en => {
+      if (en.isIntersecting) links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + en.target.id));
+    }), { rootMargin: '-45% 0px -50% 0px' });
+    ['inicio', 'clima', 'cultivos', 'rotacion', 'comunidad', 'metodologia'].forEach(id => { const s = document.getElementById(id); if (s) io.observe(s); });
+  }
+}
+
+/* -----------------------------------------------------------------------
+   8. ARRANQUE
+   ----------------------------------------------------------------------- */
+function boot() {
+  bindEvents();
+  renderSurvey();
+  MapUI.init();
+  icons();
+  selectLocation(CONFIG.DEFAULT.lat, CONFIG.DEFAULT.lon, CONFIG.DEFAULT.name);
+  setTimeout(() => $('#splash').classList.add('hide'), 1400);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+</script>
+</body>
+</html>
